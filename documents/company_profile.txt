@@ -1,0 +1,58 @@
+
+Najod Company Profile
+
+Overview
+Najod is a next-generation AI solutions company headquartered in Kampala, Uganda. The company specializes in intelligent systems that transform businesses through customer service automation, adaptive education technologies, advanced security systems, and operational analytics. With a focus on seamless integration, continuous improvement, and enterprise-grade security, Najod delivers innovative AI-powered products tailored to real-world business challenges.
+
+Mission
+To transform businesses with innovative AI solutions that enhance customer service, security, education, and automation—making advanced intelligence accessible, reliable, and impactful.
+
+Vision
+To become a leading provider of intelligent AI systems in Africa and beyond, empowering enterprises with adaptive, secure, and scalable technology that evolves with their needs.
+
+Core Solutions
+1. AIRIES A.I – Customer Service AI
+   - 24/7 intelligent support agent with natural language processing.
+   - Provides human-like responses, proactive follow-ups, and automated reporting.
+
+2. Facial Recognition System – Security AI
+   - Real-time monitoring, access control, and threat detection.
+   - AI-powered facial recognition with detailed logging and security alerts.
+
+3. Number Plate Detection – Vehicle AI
+   - Smart vehicle monitoring with automatic license plate recognition (ALPR).
+   - Delivers traffic analytics and instant security notifications.
+
+4. BWATED – AI Education
+   - Adaptive learning system that personalizes tutoring.
+   - Provides assessments, progress tracking, and self-learning capabilities.
+
+5. NAJOD Survey Systems – Feedback AI
+   - User-friendly platform for real-time customer feedback.
+   - Designed to improve service delivery through analytics and insights.
+
+Unique Approach: The Najod Blueprint
+1. Unlocking Your AI Vision – needs assessment & solution mapping.
+2. Precision AI Engineering – custom AI model design & training.
+3. Harmonious System Integration – seamless deployment into existing workflows.
+4. Iterative Performance & Assurance – continuous optimization and compliance.
+5. Empowering Deployment & Support – training, monitoring, and feature evolution.
+
+Why Choose Najod
+- 99.9% uptime – reliable systems with enterprise-grade performance.
+- 24/7 support – dedicated specialists ensuring continuous assistance.
+- 50+ enterprise clients – trusted by leading businesses.
+- 5x efficiency boost – average measurable improvement across industries.
+- Proven results – delivering enhanced efficiency, security, and customer satisfaction.
+- Enterprise security – bank-level security protocols for data and operations.
+
+Recent Developments
+- AIRIES A.I (July 2024): Transforming customer interactions with round-the-clock intelligent automation.
+- Number Plate Detection System (June 2024): Enhancing vehicle monitoring, plate recognition, and traffic security management.
+
+Company Details
+- Name: Najod Surveillance Systems (Najod)
+- Headquarters: Lugogo Bypass, Kampala, Uganda
+- Founded: ~2020
+- Size: 10–50 employees (growing)
+- Website: https://najod.co

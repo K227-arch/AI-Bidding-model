@@ -1,0 +1,81 @@
+"""
+Configuration management for the AI bid application system.
+"""
+import os
+from typing import List, Optional
+from pydantic import Field
+from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+    
+    # OpenAI Configuration
+    openai_api_key: str = Field("", env="OPENAI_API_KEY")
+    
+    # Government APIs
+    sam_gov_api_key: Optional[str] = Field(None, env="SAM_GOV_API_KEY")
+    govwin_api_key: Optional[str] = Field(None, env="GOVWIN_API_KEY")
+    
+    # Company Information
+    company_name: str = Field("Your Company", env="COMPANY_NAME")
+    company_duns: Optional[str] = Field(None, env="COMPANY_DUNS")
+    company_naics_codes: List[str] = Field(
+        default=["541511", "541512", "541519", "541690"], 
+        env="COMPANY_NAICS_CODES"
+    )
+    
+    # File Paths
+    documents_folder: str = Field("./documents", env="DOCUMENTS_FOLDER")
+    templates_folder: str = Field("./templates", env="TEMPLATES_FOLDER")
+    
+    # Application Settings
+    auto_submit: bool = Field(False, env="AUTO_SUBMIT")
+    review_mode: bool = Field(True, env="REVIEW_MODE")
+    max_applications_per_day: int = Field(10, env="MAX_APPLICATIONS_PER_DAY")
+    
+    # Logging
+    log_level: str = Field("INFO", env="LOG_LEVEL")
+    log_file: str = Field("./logs/bid_application.log", env="LOG_FILE")
+
+    # SMTP / Email Settings (Gmail by default)
+    smtp_host: str = Field("smtp.gmail.com", env="SMTP_HOST")
+    smtp_port: int = Field(587, env="SMTP_PORT")
+    smtp_username: str = Field("keithtwesigye74@gmail.com", env="SMTP_USERNAME")
+    smtp_password: str = Field("", env="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(True, env="SMTP_USE_TLS")
+    smtp_from: Optional[str] = Field(None, env="SMTP_FROM")
+    smtp_to: Optional[str] = Field(None, env="SMTP_TO")
+    smtp_bcc: Optional[str] = Field(None, env="SMTP_BCC")
+    
+    # Bid Search Keywords
+    it_keywords: List[str] = [
+        "information technology", "IT services", "software development",
+        "system administration", "network administration", "database management",
+        "cloud services", "digital transformation", "IT consulting"
+    ]
+    
+    cybersecurity_keywords: List[str] = [
+        "cybersecurity", "information security", "cyber security",
+        "security assessment", "penetration testing", "vulnerability assessment",
+        "security monitoring", "incident response", "security consulting",
+        "compliance", "risk assessment", "security operations center"
+    ]
+    
+    # Government Contracting Sites
+    bid_sources: List[str] = [
+        "https://sam.gov",
+        "https://www.fbo.gov",
+        "https://www.grants.gov",
+        "https://www.usaspending.gov"
+    ]
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+# Global settings instance
+settings = Settings()

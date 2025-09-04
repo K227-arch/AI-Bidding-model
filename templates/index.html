@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Bid Application System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-card {
+            transition: all 0.3s ease;
+        }
+        .status-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .progress-step {
+            position: relative;
+        }
+        .progress-step.completed {
+            color: #28a745;
+        }
+        .progress-step.active {
+            color: #007bff;
+        }
+        .opportunity-card {
+            border-left: 4px solid #007bff;
+        }
+        .opportunity-card.high-match {
+            border-left-color: #28a745;
+        }
+        .opportunity-card.medium-match {
+            border-left-color: #ffc107;
+        }
+        .opportunity-card.low-match {
+            border-left-color: #dc3545;
+        }
+        .loading {
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+        .status-card.clickable { cursor: pointer; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-robot me-2"></i>AI Bid Application System
+            </a>
+            <div class="ms-auto d-flex gap-2">
+                <button class="btn btn-light btn-sm" onclick="openDocumentsModal()">
+                    <i class="fas fa-file-alt me-1"></i>Documents
+                </button>
+                <button class="btn btn-warning btn-sm" onclick="openApplicationsModal()">
+                    <i class="fas fa-file-contract me-1"></i>Applications
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Status Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card status-card clickable" onclick="openDocumentsModal()">
+                    <div class="card-body text-center">
+                        <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
+                        <h5 class="card-title">Documents</h5>
+                        <p class="card-text" id="documents-count">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card status-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-search fa-2x text-info mb-2"></i>
+                        <h5 class="card-title">Opportunities</h5>
+                        <p class="card-text" id="opportunities-count">0</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card status-card clickable" onclick="openApplicationsModal()">
+                    <div class="card-body text-center">
+                        <i class="fas fa-file-contract fa-2x text-warning mb-2"></i>
+                        <h5 class="card-title">Applications</h5>
+                        <p class="card-text" id="applications-count">0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Steps -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Process Steps</h5>
+                        <div class="d-flex justify-content-between">
+                            <div class="progress-step" id="step-1">
+                                <i class="fas fa-upload me-2"></i>Upload Documents
+                            </div>
+                            <div class="progress-step" id="step-2">
+                                <i class="fas fa-search me-2"></i>Search Opportunities
+                            </div>
+                            <div class="progress-step" id="step-4">
+                                <i class="fas fa-file-contract me-2"></i>Generate Applications
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="row">
+            <!-- Left Column - Controls -->
+            <div class="col-md-4">
+                <!-- Document Upload -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-upload me-2"></i>Upload Documents</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <input type="file" class="form-control" id="document-file" multiple accept=".pdf,.docx,.doc,.txt,.xlsx,.xls">
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-upload me-2"></i>Upload
+                            </button>
+                        </form>
+                        <div class="mt-3">
+                            <button class="btn btn-success w-100" onclick="processDocuments()">
+                                <i class="fas fa-cogs me-2"></i>Process Documents
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Controls -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-search me-2"></i>Search Opportunities</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Days Back</label>
+                            <input type="number" class="form-control" id="days-back" value="7" min="1" max="30">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Max Opportunities</label>
+                            <input type="number" class="form-control" id="max-opportunities" value="50" min="1" max="200">
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="quick-search" checked>
+                            <label class="form-check-label" for="quick-search">
+                                Quick Search (limit keyword count)
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="run-parallel" checked>
+                            <label class="form-check-label" for="run-parallel">
+                                Run scrapers in parallel
+                            </label>
+                        </div>
+                        <button class="btn btn-info w-100" onclick="searchOpportunities()">
+                            <i class="fas fa-search me-2"></i>Search
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Column - Results -->
+            <div class="col-md-8">
+                <!-- Opportunities List -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-list me-2"></i>Opportunities</h5>
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshOpportunities()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="opportunities-list">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-search fa-3x mb-3"></i>
+                                <p>Search for opportunities to see results here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History -->
+                <div class="card mt-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-history me-2"></i>History</h5>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" title="Refresh Application History" onclick="fetchApplicationHistory()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" title="Refresh Submission History" onclick="fetchSubmissionHistory()">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h6 class="mb-2">Generated Applications</h6>
+                        <div id="application-history-list" class="mb-3 text-muted small">No applications yet.</div>
+                        <h6 class="mb-2">Submission History</h6>
+                        <div id="submission-history-list" class="text-muted small">No submissions yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 id="loading-message">Processing...</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="toast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="fas fa-info-circle text-primary me-2"></i>
+                <strong class="me-auto">System Message</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                <!-- Toast message will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let opportunities = [];
+        let applications = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            setupEventListeners();
+            fetchApplicationHistory();
+            fetchSubmissionHistory();
+        });
+
+        function setupEventListeners() {
+            // File upload form
+            document.getElementById('upload-form').addEventListener('submit', handleFileUpload);
+            // Auto-upload when files are selected
+            const fileInput = document.getElementById('document-file');
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files && fileInput.files.length > 0) {
+                    document.getElementById('upload-form').requestSubmit();
+                }
+            });
+        }
+
+        async function handleFileUpload(event) {
+            event.preventDefault();
+            const formData = new FormData();
+            const fileInput = document.getElementById('document-file');
+            
+            if (fileInput.files.length === 0) {
+                showToast('Please select files to upload', 'warning');
+                return;
+            }
+
+            // Validate file types
+            const allowedTypes = ['.pdf', '.docx', '.doc', '.txt', '.xlsx', '.xls'];
+            for (let file of fileInput.files) {
+                const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+                if (!allowedTypes.includes(fileExtension)) {
+                    showToast(`File type ${fileExtension} not supported. Allowed types: ${allowedTypes.join(', ')}`, 'error');
+                    return;
+                }
+                formData.append('file', file);
+            }
+
+            showLoading('Uploading documents...');
+
+            try {
+                const response = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showToast(result.message, 'success');
+                    // Clear the file input
+                    fileInput.value = '';
+                    updateStatus();
+
+                    // Automatically proceed with processing -> search -> match
+                    try {
+                        showToast('Starting automatic processing...', 'info');
+                        await processDocuments();
+                        await searchOpportunities();
+                        // Removed automatic matching step per request
+                        // await matchOpportunities();
+                    } catch (autoErr) {
+                        console.error('Auto pipeline failed:', autoErr);
+                        showToast('Automatic processing failed: ' + autoErr.message, 'error');
+                    }
+                } else {
+                    // Show warning or error accordingly
+                    showToast(result.message, result.status === 'warning' ? 'warning' : 'error');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                showToast('Upload failed: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function processDocuments() {
+            showLoading('Processing documents...');
+
+            try {
+                const response = await fetch('/api/documents/process', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showToast(result.message, 'success');
+                    updateStep(1, true);
+                } else {
+                    showToast(result.message, result.status === 'error' ? 'error' : 'warning');
+                }
+            } catch (error) {
+                showToast('Processing failed: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+                updateStatus();
+            }
+        }
+
+        async function searchOpportunities() {
+            const daysBack = document.getElementById('days-back').value;
+            const maxOpportunities = document.getElementById('max-opportunities').value;
+            const quickSearch = document.getElementById('quick-search') ? document.getElementById('quick-search').checked : false;
+            const runParallel = document.getElementById('run-parallel') ? document.getElementById('run-parallel').checked : false;
+
+            showLoading('Searching for opportunities...');
+
+            try {
+                const response = await fetch('/api/opportunities/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        days_back: parseInt(daysBack),
+                        max_opportunities: parseInt(maxOpportunities),
+                        quick_search: Boolean(quickSearch),
+                        run_parallel: Boolean(runParallel)
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showToast(result.message, 'success');
+                    updateStep(2, true);
+                } else {
+                    showToast(result.message, result.status === 'error' ? 'error' : 'warning');
+                }
+            } catch (error) {
+                showToast('Search failed: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+                updateStatus();
+                refreshOpportunities();
+            }
+        }
+
+        let matchAbortController = null;
+
+
+        async function generateApplication(opportunityId) {
+            showLoading('Generating application...');
+
+            try {
+                const response = await fetch('/api/applications/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        opportunity_id: opportunityId
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showToast(result.message, 'success');
+                    applications.push({
+                        opportunity_id: opportunityId,
+                        title: result.opportunity_title,
+                        generated_at: new Date().toISOString()
+                    });
+                    updateApplicationsCount();
+                    fetchApplicationHistory();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Generation failed: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function emailApplication(opportunityId) {
+            // Let user choose extra docs before sending
+            const docs = await (await fetch('/api/documents')).json();
+            const docNames = (docs.documents || []).map(d => d.name);
+
+            // Build a simple selection modal dynamically
+            const selectionHtml = `
+                <div class="modal fade" id="emailDocsModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title"><i class="fas fa-paperclip me-2"></i>Select attachments</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-2 small text-muted">WIC documents are preselected by keyword automatically ("wic"), but you can explicitly choose files here.</div>
+                                <div id="email-docs-list" class="d-flex flex-column gap-1" style="max-height:260px;overflow:auto;"></div>
+                                <div class="mt-2">
+                                    <label class="form-label small">Extra keyword filters (comma-separated)</label>
+                                    <input id="email-extra-keywords" class="form-control form-control-sm" placeholder="e.g. wic, company profile" value="wic">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button id="email-send-btn" type="button" class="btn btn-success">Send Email</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            // Inject modal into DOM if not exists
+            let modalWrapper = document.getElementById('emailDocsModal');
+            if (!modalWrapper) {
+                const div = document.createElement('div');
+                div.innerHTML = selectionHtml;
+                document.body.appendChild(div.firstElementChild);
+                modalWrapper = document.getElementById('emailDocsModal');
+            }
+
+            // Populate list
+            const listEl = modalWrapper.querySelector('#email-docs-list');
+            listEl.innerHTML = (docNames.length ? docNames.map(n => `
+                <label class="form-check small">
+                    <input class="form-check-input" type="checkbox" value="${n}">
+                    <span class="form-check-label">${n}</span>
+                </label>
+            `).join('') : '<div class="text-muted small">No documents found. Upload from the Documents section.</div>');
+
+            const bsModal = new bootstrap.Modal(modalWrapper);
+            bsModal.show();
+
+            // Wire send button once
+            const sendBtn = modalWrapper.querySelector('#email-send-btn');
+            sendBtn.onclick = async () => {
+                const checked = Array.from(listEl.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
+                const kwInput = modalWrapper.querySelector('#email-extra-keywords');
+                const extraKeywords = kwInput.value.split(',').map(s => s.trim()).filter(Boolean);
+
+                bsModal.hide();
+                showLoading('Sending email...');
+                try {
+                    const response = await fetch('/api/applications/email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            opportunity_id: opportunityId,
+                            extra_doc_names: checked,
+                            extra_doc_keywords: extraKeywords
+                        })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        showToast('Email sent successfully', 'success');
+                    } else {
+                        showToast(result.message || 'Failed to send email', 'error');
+                    }
+                } catch (err) {
+                    console.error('Email error:', err);
+                    showToast('Email failed: ' + err.message, 'error');
+                } finally {
+                    hideLoading();
+                    fetchSubmissionHistory();
+                }
+            };
+        }
+
+        async function refreshOpportunities() {
+            try {
+                const response = await fetch('/api/opportunities');
+                const result = await response.json();
+                
+                opportunities = result.opportunities;
+                displayOpportunities();
+            } catch (error) {
+                console.error('Failed to refresh opportunities:', error);
+            }
+        }
+
+        function displayOpportunities() {
+            const container = document.getElementById('opportunities-list');
+            
+            if (opportunities.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-search fa-3x mb-3"></i>
+                        <p>No opportunities found. Search for opportunities to see results here.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const html = opportunities.map(opp => {
+                return `
+                    <div class="card opportunity-card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="card-title mb-0">${opp.title}</h6>
+                            </div>
+                            <p class="card-text text-muted small mb-2">
+                                <i class="fas fa-building me-1"></i>${opp.agency}
+                                ${opp.due_date ? `<i class=\"fas fa-calendar ms-3 me-1\"></i>${new Date(opp.due_date).toLocaleDateString()}` : ''}
+                            </p>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                                    <i class="fas fa-file-contract me-1"></i>Generate Application
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${opp.opportunity_id}')">
+                                    <i class="fas fa-paper-plane me-1"></i>Send Email
+                                </button>
+                                ${opp.url ? `<a href="${opp.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>View Details
+                                </a>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        }
+
+        async function fetchApplicationHistory() {
+            try {
+                const res = await fetch('/api/history/applications');
+                const data = await res.json();
+                renderApplicationHistory(data.applications || []);
+            } catch (e) {
+                console.error('Failed to load application history', e);
+            }
+        }
+
+        function renderApplicationHistory(items) {
+            const container = document.getElementById('application-history-list');
+            if (!container) return;
+            if (!items || items.length === 0) {
+                container.textContent = 'No applications yet.';
+                return;
+            }
+            container.innerHTML = items.map(item => {
+                const dateStr = item.generated_date ? new Date(item.generated_date).toLocaleString() : '';
+                const combinedUrl = item.combined_path ? `/${item.combined_path}` : '#';
+                return `
+                    <div class="d-flex justify-content-between align-items-start border rounded p-2 mb-2">
+                        <div>
+                            <div class="fw-bold">${item.opportunity_title || item.opportunity_id || 'Untitled'}</div>
+                            <div class="text-muted small"><i class="fas fa-building me-1"></i>${item.opportunity_agency || ''}</div>
+                            <div class="text-muted small"><i class="fas fa-calendar-alt me-1"></i>${dateStr}</div>
+                        </div>
+                        <div class="ms-2 d-flex gap-2">
+                            <a class="btn btn-sm btn-outline-primary" target="_blank" href="${combinedUrl}">
+                                <i class="fas fa-file-alt me-1"></i>Open
+                            </a>
+                            <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${item.opportunity_id}')">
+                                <i class="fas fa-paper-plane me-1"></i>Email Package
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchSubmissionHistory() {
+            try {
+                const res = await fetch('/api/history/submissions');
+                const data = await res.json();
+                renderSubmissionHistory(data.submissions || []);
+            } catch (e) {
+                console.error('Failed to load submission history', e);
+            }
+        }
+
+        function renderSubmissionHistory(items) {
+            const container = document.getElementById('submission-history-list');
+            if (!container) return;
+            if (!items || items.length === 0) {
+                container.textContent = 'No submissions yet.';
+                return;
+            }
+            container.innerHTML = items.map(s => {
+                const dt = s.timestamp ? new Date(s.timestamp).toLocaleString() : '';
+                const statusBadge = s.status === 'success' ? 'success' : (s.status === 'error' ? 'danger' : 'secondary');
+                return `
+                    <div class="border rounded p-2 mb-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="fw-bold">${s.opportunity_title || s.opportunity_id || 'Submission'}</div>
+                            <span class="badge bg-${statusBadge}">${s.status || 'unknown'}</span>
+                        </div>
+                        <div class="text-muted small"><i class="fas fa-clock me-1"></i>${dt}</div>
+                        ${s.message ? `<div>${s.message}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                
+                document.getElementById('documents-count').textContent = status.documents_processed;
+                document.getElementById('opportunities-count').textContent = status.opportunities_found;
+                // removed matched-count update since matching is no longer supported
+                document.getElementById('applications-count').textContent = applications.length;
+            } catch (error) {
+                console.error('Failed to update status:', error);
+            }
+        }
+
+        function updateApplicationsCount() {
+            document.getElementById('applications-count').textContent = applications.length;
+        }
+
+        function updateStep(step, completed) {
+            const stepElement = document.getElementById(`step-${step}`);
+            if (completed) {
+                stepElement.classList.add('completed');
+                stepElement.classList.remove('active');
+            } else {
+                stepElement.classList.add('active');
+                stepElement.classList.remove('completed');
+            }
+        }
+
+        function showLoading(message) {
+            document.getElementById('loading-message').textContent = message;
+            const modal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            modal.show();
+        }
+
+        function hideLoading() {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('loadingModal'));
+            if (modal) {
+                modal.hide();
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            const toastHeader = toast.querySelector('.toast-header');
+            
+            toastMessage.textContent = message;
+            
+            // Update icon and color based on type
+            const icon = toastHeader.querySelector('i');
+            icon.className = `fas me-2 ${
+                type === 'success' ? 'fa-check-circle text-success' :
+                type === 'error' ? 'fa-exclamation-circle text-danger' :
+                type === 'warning' ? 'fa-exclamation-triangle text-warning' :
+                'fa-info-circle text-primary'
+            }`;
+            
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+        }
+
+        // Dynamically build and open Documents modal (avoids relying on markup after </html>)
+        async function openDocumentsModal() {
+            try {
+                let modalEl = document.getElementById('documentsModal');
+                if (!modalEl) {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = `
+<div class="modal fade" id="documentsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-file-alt me-2"></i>Documents</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="documents-empty" class="text-muted">No documents uploaded yet.</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th style="width: 120px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="documents-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+                    document.body.appendChild(wrapper.firstElementChild);
+                    modalEl = document.getElementById('documentsModal');
+                }
+
+                const res = await fetch('/api/documents');
+                const data = await res.json();
+                const tbody = modalEl.querySelector('#documents-table-body');
+                const empty = modalEl.querySelector('#documents-empty');
+                tbody.innerHTML = '';
+                if (!data.documents || data.documents.length === 0) {
+                    empty.style.display = 'block';
+                } else {
+                    empty.style.display = 'none';
+                    tbody.innerHTML = data.documents.map(d => `
+                      <tr>
+                        <td>${d.name}</td>
+                        <td>
+                          <a class="btn btn-sm btn-outline-primary" target="_blank" href="/documents/${encodeURIComponent(d.name)}">
+                            <i class="fas fa-download me-1"></i>Open
+                          </a>
+                        </td>
+                      </tr>
+                    `).join('');
+                }
+
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            } catch (e) {
+                console.error('Failed to load documents', e);
+                showToast('Failed to load documents', 'error');
+            }
+        }
+
+        // Dynamically build and open Applications modal and show an "Applied" badge for successful submissions
+        async function openApplicationsModal() {
+            try {
+                let modalEl = document.getElementById('applicationsModal');
+                if (!modalEl) {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = `
+<div class="modal fade" id="applicationsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-file-contract me-2"></i>Applications</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-6">
+            <h6 class="mb-2">Generated Applications</h6>
+            <div id="applications-empty" class="text-muted small">No applications yet.</div>
+            <div id="applications-list" class="small"></div>
+          </div>
+          <div class="col-md-6">
+            <h6 class="mb-2">Submission History</h6>
+            <div id="submissions-empty" class="text-muted small">No submissions yet.</div>
+            <div id="submissions-list" class="small"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+                    document.body.appendChild(wrapper.firstElementChild);
+                    modalEl = document.getElementById('applicationsModal');
+                }
+
+                const [appsRes, subsRes] = await Promise.all([
+                    fetch('/api/history/applications'),
+                    fetch('/api/history/submissions')
+                ]);
+                const appsData = await appsRes.json();
+                const subsData = await subsRes.json();
+
+                const appsList = modalEl.querySelector('#applications-list');
+                const appsEmpty = modalEl.querySelector('#applications-empty');
+                const subsList = modalEl.querySelector('#submissions-list');
+                const subsEmpty = modalEl.querySelector('#submissions-empty');
+
+                const appliedSet = new Set((subsData.submissions || [])
+                    .filter(s => s.status === 'success')
+                    .map(s => s.opportunity_id));
+
+                if (!appsData.applications || appsData.applications.length === 0) {
+                    appsEmpty.style.display = 'block';
+                    appsList.innerHTML = '';
+                } else {
+                    appsEmpty.style.display = 'none';
+                    appsList.innerHTML = appsData.applications.map(item => {
+                        const dateStr = item.generated_date ? new Date(item.generated_date).toLocaleString() : '';
+                        const combinedUrl = item.combined_path ? `/${item.combined_path}` : '#';
+                        const appliedBadge = appliedSet.has(item.opportunity_id) ? '<span class="badge bg-success ms-2">Applied</span>' : '';
+                        return `
+<div class="d-flex justify-content-between align-items-start border rounded p-2 mb-2">
+  <div>
+    <div class="fw-bold">${item.opportunity_title || item.opportunity_id || 'Untitled'} ${appliedBadge}</div>
+    <div class="text-muted"><i class="fas fa-building me-1"></i>${item.opportunity_agency || ''}</div>
+    <div class="text-muted"><i class="fas fa-calendar-alt me-1"></i>${dateStr}</div>
+  </div>
+  <div class="ms-2 d-flex gap-2">
+    <a class="btn btn-sm btn-outline-primary" target="_blank" href="${combinedUrl}">
+      <i class="fas fa-file-alt me-1"></i>Open
+    </a>
+    <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${item.opportunity_id}')">
+      <i class="fas fa-paper-plane me-1"></i>Email
+    </button>
+  </div>
+</div>`;
+                    }).join('');
+                }
+
+                if (!subsData.submissions || subsData.submissions.length === 0) {
+                    subsEmpty.style.display = 'block';
+                    subsList.innerHTML = '';
+                } else {
+                    subsEmpty.style.display = 'none';
+                    subsList.innerHTML = subsData.submissions.map(s => {
+                        const dt = s.timestamp ? new Date(s.timestamp).toLocaleString() : '';
+                        const statusBadge = s.status === 'success' ? 'success' : (s.status === 'error' ? 'danger' : 'secondary');
+                        return `
+<div class="border rounded p-2 mb-2">
+  <div class="d-flex justify-content-between align-items-center">
+    <div class="fw-bold">${s.opportunity_title || s.opportunity_id || 'Submission'}</div>
+    <span class="badge bg-${statusBadge}">${s.status || 'unknown'}</span>
+  </div>
+  <div class="text-muted"><i class="fas fa-clock me-1"></i>${dt}</div>
+  ${s.message ? `<div>${s.message}</div>` : ''}
+</div>`;
+                    }).join('');
+                }
+
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            } catch (e) {
+                console.error('Failed to load applications', e);
+                showToast('Failed to load applications', 'error');
+            }
+        }
+
+    </script>
+</body>
+</html>

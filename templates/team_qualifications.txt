@@ -1,0 +1,10 @@
+Team Qualifications
+
+Key Personnel:
+- [PERSON_1]: [QUALIFICATIONS]
+- [PERSON_2]: [QUALIFICATIONS]
+
+Certifications:
+- [CERTIFICATION_1]
+- [CERTIFICATION_2]
+        
