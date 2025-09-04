@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     auto_submit: bool = Field(False, env="AUTO_SUBMIT")
     review_mode: bool = Field(True, env="REVIEW_MODE")
     max_applications_per_day: int = Field(10, env="MAX_APPLICATIONS_PER_DAY")
+
+    # New Feature Flags / Performance Tuning
+    fast_mode_default: bool = Field(False, env="FAST_MODE_DEFAULT")
+    openai_section_timeout_secs: int = Field(45, env="OPENAI_SECTION_TIMEOUT_SECS")
+    generation_parallelism: int = Field(5, env="GENERATION_PARALLELISM")
+    prewarm_on_startup: bool = Field(True, env="PREWARM_ON_STARTUP")
+    background_jobs_max: int = Field(100, env="BACKGROUND_JOBS_MAX")
     
     # Logging
     log_level: str = Field("INFO", env="LOG_LEVEL")
@@ -72,10 +79,10 @@ class Settings(BaseSettings):
         "https://www.grants.gov",
         "https://www.usaspending.gov"
     ]
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+
+class Config:
+    env_file = ".env"
+    case_sensitive = False
 
 # Global settings instance
 settings = Settings()

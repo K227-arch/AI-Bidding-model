@@ -17,6 +17,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import asyncio
 from loguru import logger
+from uuid import uuid4
+from typing import Tuple
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -78,8 +80,11 @@ class BidSystem:
         self.current_opportunities = []
         self.match_results = []
         
+        # Background job store
+        self.jobs: Dict[str, Dict[str, Any]] = {}
+        
         logger.info("Web Bid Application System initialized")
-    
+
     async def process_documents(self) -> Dict[str, Any]:
         """Process company documents."""
         try:
@@ -111,7 +116,7 @@ class BidSystem:
                 'message': f'Document processing failed: {str(e)}',
                 'documents_processed': 0
             }
-    
+
     async def search_opportunities(self, days_back: int = 7, max_opportunities: int = 50, quick_search: bool = False, run_parallel: bool = False) -> Dict[str, Any]:
         """Search for opportunities."""
         try:
@@ -230,8 +235,8 @@ class BidSystem:
                 'opportunities_matched': 0
             }
     
-    async def generate_application(self, opportunity_id: str) -> Dict[str, Any]:
-        """Generate application for a specific opportunity."""
+    async def generate_application(self, opportunity_id: str, fast_mode: Optional[bool] = None) -> Dict[str, Any]:
+        """Generate application for a specific opportunity (blocking call)."""
         try:
             # Ensure documents and company profile are available
             if not self.processed_docs:
@@ -260,6 +265,7 @@ class BidSystem:
                         'message': 'Opportunity not found',
                         'application_generated': False
                     }
+
                 # Build simple matching keywords heuristic
                 matching_keywords: List[str] = []
                 try:
@@ -282,7 +288,7 @@ class BidSystem:
 
             # Generate application
             application_package = self.application_generator.generate_application(
-                match_result, self.company_profile or {}, self.processed_docs or []
+                match_result, self.company_profile or {}, self.processed_docs or [], fast_mode=fast_mode
             )
 
             # Save application package
@@ -305,6 +311,66 @@ class BidSystem:
                 'message': f'Application generation failed: {str(e)}',
                 'application_generated': False
             }
+
+    # Background job helpers
+    def start_generation_job(self, opportunity_id: str, fast_mode: Optional[bool] = None, enhance_after: bool = False) -> str:
+        if len(self.jobs) >= settings.background_jobs_max:
+            raise HTTPException(status_code=429, detail="Too many background jobs. Please try again later.")
+        job_id = str(uuid4())
+        self.jobs[job_id] = {
+            'status': 'pending',
+            'opportunity_id': opportunity_id,
+            'fast_mode': fast_mode,
+            'enhance_after': enhance_after,
+            'started_at': datetime.now().isoformat(),
+            'finished_at': None,
+            'output_folder': None,
+            'enhanced_output_folder': None,
+            'error': None,
+        }
+        asyncio.create_task(self._run_generation_job(job_id))
+        return job_id
+
+    async def _run_generation_job(self, job_id: str):
+        job = self.jobs.get(job_id)
+        if not job:
+            return
+        job['status'] = 'running'
+        opp_id = job['opportunity_id']
+        fast_mode = job.get('fast_mode', None)
+        enhance_after = bool(job.get('enhance_after'))
+        try:
+            # Ensure preconditions
+            if not self.processed_docs:
+                self.processed_docs = self.document_processor.process_all_documents()
+            if not self.company_profile:
+                self.company_profile = self.document_processor.get_company_profile(self.processed_docs)
+                self.opportunity_matcher.set_company_profile(self.company_profile)
+            # Blocking call to reuse existing logic
+            result = await self.generate_application(opp_id, fast_mode=fast_mode)
+            if result.get('application_generated'):
+                job['output_folder'] = result.get('output_folder')
+                # Optional enhancement: run full AI generation and save separately
+                if enhance_after and (fast_mode is True or fast_mode is None and settings.fast_mode_default):
+                    try:
+                        full_result = await self.generate_application(opp_id, fast_mode=False)
+                        if full_result.get('application_generated'):
+                            job['enhanced_output_folder'] = full_result.get('output_folder')
+                    except Exception as e:
+                        logger.warning(f"Enhancement failed for job {job_id}: {e}")
+            job['status'] = 'completed'
+            job['finished_at'] = datetime.now().isoformat()
+        except Exception as e:
+            job['status'] = 'failed'
+            job['error'] = str(e)
+            job['finished_at'] = datetime.now().isoformat()
+
+    def get_job_status(self, job_id: str) -> Dict[str, Any]:
+        job = self.jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        # Return a shallow copy to avoid mutation outside
+        return dict(job)
 
     async def email_application(self, opportunity_id: str, to: Optional[List[str]] = None,
                                 extra_doc_keywords: Optional[List[str]] = None,
@@ -449,7 +515,17 @@ class BidSystem:
         
         return unique_opportunities
 
-bid_system = BidSystem()
+# Initialize system and prewarm on startup
+@app.on_event("startup")
+async def on_startup():
+    global bid_system
+    bid_system = BidSystem()
+    if settings.prewarm_on_startup:
+        try:
+            await bid_system.process_documents()
+            logger.info("Prewarm completed: company profile cached")
+        except Exception as e:
+            logger.warning(f"Prewarm failed: {e}")
 
 class SearchRequest(BaseModel):
     days_back: int = 7
@@ -459,6 +535,12 @@ class SearchRequest(BaseModel):
 
 class ApplicationRequest(BaseModel):
     opportunity_id: str
+
+class GenerationRequest(BaseModel):
+    opportunity_id: str
+    fast_mode: Optional[bool] = None
+    background: bool = True
+    enhance_after: bool = False
 
 class EmailApplicationRequest(BaseModel):
     opportunity_id: str
@@ -473,8 +555,10 @@ async def home(request: Request):
 @app.get("/api/status")
 async def get_status():
     return JSONResponse(content={
-        'documents_processed': len(bid_system.processed_docs),
-        'opportunities_found': len(bid_system.current_opportunities)
+        'message': 'Backend is running',
+        'timestamp': datetime.now().isoformat(),
+        'jobs_total': len(bid_system.jobs) if bid_system else 0,
+        'jobs_running': sum(1 for j in (bid_system.jobs.values() if bid_system else []) if j.get('status') == 'running')
     })
 
 @app.get("/api/test")
@@ -589,10 +673,19 @@ async def get_submission_history():
     return JSONResponse(content={'submissions': entries, 'total': len(entries)})
 
 @app.post("/api/applications/generate")
-async def generate_application(request: ApplicationRequest):
-    """Generate application for an opportunity."""
-    result = await bid_system.generate_application(request.opportunity_id)
-    return JSONResponse(content=result)
+async def generate_application(request: GenerationRequest):
+    """Generate application for an opportunity. Defaults to background job with optional fast_mode."""
+    if request.background:
+        job_id = bid_system.start_generation_job(request.opportunity_id, fast_mode=request.fast_mode, enhance_after=request.enhance_after)
+        return JSONResponse(content={'status': 'accepted', 'job_id': job_id})
+    else:
+        result = await bid_system.generate_application(request.opportunity_id, fast_mode=request.fast_mode)
+        return JSONResponse(content=result)
+
+@app.get("/api/jobs/{job_id}")
+async def get_job(job_id: str):
+    status = bid_system.get_job_status(job_id)
+    return JSONResponse(content=status)
 
 @app.post("/api/applications/email")
 async def email_application(request: EmailApplicationRequest):

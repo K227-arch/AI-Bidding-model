@@ -10,6 +10,8 @@ from loguru import logger
 import openai
 from docx import Document
 from docx.shared import Inches
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from config import settings
 
 from scrapers import BidOpportunity
 from ai import MatchResult
@@ -44,19 +46,63 @@ class ApplicationGenerator:
     
     def generate_application(self, match_result: MatchResult, 
                            company_profile: Dict[str, Any],
-                           processed_docs: List[ProcessedDocument]) -> Dict[str, str]:
+                           processed_docs: List[ProcessedDocument],
+                           fast_mode: Optional[bool] = None) -> Dict[str, str]:
         """Generate complete application package for an opportunity."""
         
         opportunity = match_result.opportunity
         
         logger.info(f"Generating application for: {opportunity.title}")
         
-        # Generate different sections
-        cover_letter = self._generate_cover_letter(match_result, company_profile)
-        technical_approach = self._generate_technical_approach(match_result, company_profile)
-        past_performance = self._generate_past_performance(match_result, processed_docs)
-        team_qualifications = self._generate_team_qualifications(match_result, processed_docs)
-        executive_summary = self._generate_executive_summary(match_result, company_profile)
+        if fast_mode is None:
+            fast_mode = settings.fast_mode_default
+        
+        if fast_mode:
+            # Fast path: use clean fallback templates without AI calls
+            cover_letter = self._get_fallback_cover_letter(opportunity, company_profile)
+            technical_approach = self._get_fallback_technical_approach(opportunity)
+            past_performance = self._get_fallback_past_performance()
+            team_qualifications = self._get_fallback_team_qualifications()
+            executive_summary = self._get_fallback_executive_summary(opportunity, company_profile)
+        else:
+            # Parallelize AI section generation using threads
+            def _tasks():
+                return {
+                    'cover_letter': lambda: self._generate_cover_letter(match_result, company_profile),
+                    'technical_approach': lambda: self._generate_technical_approach(match_result, company_profile),
+                    'past_performance': lambda: self._generate_past_performance(match_result, processed_docs),
+                    'team_qualifications': lambda: self._generate_team_qualifications(match_result, processed_docs),
+                    'executive_summary': lambda: self._generate_executive_summary(match_result, company_profile),
+                }
+        
+            results: Dict[str, str] = {}
+            tasks = _tasks()
+            max_workers = max(1, min(settings.generation_parallelism, len(tasks)))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_name = {executor.submit(func): name for name, func in tasks.items()}
+                for future in as_completed(future_to_name):
+                    name = future_to_name[future]
+                    try:
+                        results[name] = future.result()
+                    except Exception as e:
+                        logger.error(f"Section generation failed for {name}: {e}")
+                        # Use appropriate fallback for the failed section
+                        if name == 'cover_letter':
+                            results[name] = self._get_fallback_cover_letter(opportunity, company_profile)
+                        elif name == 'technical_approach':
+                            results[name] = self._get_fallback_technical_approach(opportunity)
+                        elif name == 'past_performance':
+                            results[name] = self._get_fallback_past_performance()
+                        elif name == 'team_qualifications':
+                            results[name] = self._get_fallback_team_qualifications()
+                        elif name == 'executive_summary':
+                            results[name] = self._get_fallback_executive_summary(opportunity, company_profile)
+            
+            cover_letter = results.get('cover_letter', self._get_fallback_cover_letter(opportunity, company_profile))
+            technical_approach = results.get('technical_approach', self._get_fallback_technical_approach(opportunity))
+            past_performance = results.get('past_performance', self._get_fallback_past_performance())
+            team_qualifications = results.get('team_qualifications', self._get_fallback_team_qualifications())
+            executive_summary = results.get('executive_summary', self._get_fallback_executive_summary(opportunity, company_profile))
         
         application_package = {
             'cover_letter': cover_letter,
@@ -120,7 +166,8 @@ class ApplicationGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
-                temperature=0.7
+                temperature=0.7,
+                request_timeout=settings.openai_section_timeout_secs
             )
             
             return response.choices[0].message.content.strip()
@@ -164,7 +211,8 @@ class ApplicationGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1200,
-                temperature=0.6
+                temperature=0.6,
+                request_timeout=settings.openai_section_timeout_secs
             )
             
             return response.choices[0].message.content.strip()
@@ -212,7 +260,8 @@ class ApplicationGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1000,
-                temperature=0.6
+                temperature=0.6,
+                request_timeout=settings.openai_section_timeout_secs
             )
             
             return response.choices[0].message.content.strip()
@@ -262,7 +311,8 @@ class ApplicationGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1000,
-                temperature=0.6
+                temperature=0.6,
+                request_timeout=settings.openai_section_timeout_secs
             )
             
             return response.choices[0].message.content.strip()
@@ -307,7 +357,8 @@ class ApplicationGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=600,
-                temperature=0.7
+                temperature=0.7,
+                request_timeout=settings.openai_section_timeout_secs
             )
             
             return response.choices[0].message.content.strip()
