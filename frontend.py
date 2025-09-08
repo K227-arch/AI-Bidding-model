@@ -24,7 +24,7 @@ from typing import Tuple
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from config import settings
-from scrapers import SAMGovScraper, FBOScraper, SampleScraper, RemotiveScraper, RemoteOKScraper, UgandaSampleScraper
+from scrapers import SAMGovScraper, FBOScraper, SampleScraper, RemotiveScraper, RemoteOKScraper, UgandaSampleScraper, EGPUgandaScraper, UpworkScraper, NewVisionTendersScraper, UnitedNationsScraper
 from processors import DocumentProcessor
 from ai import OpportunityMatcher, MatchResult
 from applicators import ApplicationGenerator, ApplicationSubmitter, EmailSender
@@ -73,6 +73,10 @@ class BidSystem:
             RemotiveScraper(),
             RemoteOKScraper(),
             UgandaSampleScraper(),
+            EGPUgandaScraper(),
+            UpworkScraper(),
+            NewVisionTendersScraper(),
+            UnitedNationsScraper(),  # Add United Nations scraper
         ]
         
         self.company_profile = None
@@ -116,6 +120,141 @@ class BidSystem:
                 'message': f'Document processing failed: {str(e)}',
                 'documents_processed': 0
             }
+
+    def _get_it_ict_keywords(self) -> List[str]:
+        """Return a normalized list of IT/ICT-related keywords for global filtering."""
+        base = (settings.it_keywords or []) + (settings.cybersecurity_keywords or [])
+        # Include common ICT synonyms/variants explicitly
+        extras = [
+            "ict",
+            "information and communications technology",
+            "information & communication technology",
+            "information communication technology",
+            "it support",
+            "systems administrator",
+            "network engineer",
+            "database administrator",
+            "software engineer",
+            "web developer",
+            "mobile developer",
+            "full stack",
+            "backend",
+            "frontend",
+            "devops",
+            "sre",
+            "cloud engineer",
+            "cloud architect",
+            "data engineer",
+            "data analyst",
+            "machine learning",
+            "ai",
+            "information systems",
+        ]
+        kws = [kw.lower() for kw in (base + extras) if isinstance(kw, str)]
+        # Deduplicate while preserving order
+        seen = set()
+        out = []
+        for kw in kws:
+            if kw not in seen:
+                out.append(kw)
+                seen.add(kw)
+        return out
+
+    def _is_it_ict_related(self, opportunity) -> bool:
+        """Heuristic check to ensure an opportunity is IT/ICT-related.
+        Uses title/description text and any provided keywords.
+        """
+        allowed = self._get_it_ict_keywords()
+        title = (getattr(opportunity, 'title', '') or '').lower()
+        desc = (getattr(opportunity, 'description', '') or '').lower()
+        text = f"{title} {desc}".strip()
+        if text and any(kw in text for kw in allowed):
+            return True
+        opp_kws = getattr(opportunity, 'keywords', None) or []
+        if any((kw or '').lower() in allowed for kw in opp_kws):
+            return True
+        return False
+        
+    def _is_government_bid(self, opportunity) -> bool:
+        """Determine if an opportunity is a government bid/contract.
+        """
+        # Check source - SAMGov, FBO, EGPUganda, etc. are government sources
+        source = getattr(opportunity, 'source', '').lower()
+        gov_sources = ['samgov', 'fbo', 'egpuganda', 'newvisiontenders', 'ugandatenders',
+                       'united nations', 'undp', 'unicef', 'unops']
+        if any(gov_src in source for gov_src in gov_sources):
+            return True
+            
+        # Check agency name for government indicators
+        agency = (getattr(opportunity, 'agency', '') or '').lower()
+        gov_indicators = ['government', 'ministry', 'department', 'agency', 'federal', 'state', 'municipal', 
+                         'county', 'city of', 'public', 'authority', 'commission', 'bureau',
+                         'public sector', 'united nations', 'undp', 'unicef', 'unops']
+        if any(indicator in agency for indicator in gov_indicators):
+            return True
+            
+        # Check title/description for government bid indicators
+        title = (getattr(opportunity, 'title', '') or '').lower()
+        desc = (getattr(opportunity, 'description', '') or '').lower()
+        text = f"{title} {desc}".strip()
+        gov_bid_indicators = ['rfp', 'request for proposal', 'tender', 'solicitation', 'government contract', 
+                             'public procurement', 'public tender', 'government bid',
+                             'rfq', 'request for quotation', 'rfi', 'request for information', 'eoi', 'expression of interest',
+                             'ifb', 'invitation for bids', 'invitation to bid', 'procurement notice', 'bid notice', 'contract notice',
+                             'public contract', 'framework agreement']
+        if text and any(indicator in text for indicator in gov_bid_indicators):
+            return True
+            
+        return False
+        
+    def _is_job_application(self, opportunity) -> bool:
+        """Determine if an opportunity is a job application.
+        """
+        # If it's not a government bid, it's likely a job application in this system
+        if not self._is_government_bid(opportunity):
+            # Additional check for job indicators
+            title = (getattr(opportunity, 'title', '') or '').lower()
+            desc = (getattr(opportunity, 'description', '') or '').lower()
+            text = f"{title} {desc}".strip()
+            job_indicators = ['job', 'career', 'position', 'employment', 'hire', 'hiring', 'vacancy', 
+                             'developer', 'engineer', 'administrator', 'manager', 'specialist', 'analyst', 
+                             'consultant', 'technician', 'support', 'remote', 'full-time', 'part-time', 
+                             'contract', 'permanent', 'salary', 'compensation', 'benefits', 'apply now']
+            
+            # Check source - Remotive, RemoteOK, Upwork are job sources
+            source = getattr(opportunity, 'source', '').lower()
+            job_sources = ['remotive', 'remoteok', 'upwork']
+            
+            return any(indicator in text for indicator in job_indicators) or any(src in source for src in job_sources)
+        return False
+        
+    def _get_opportunity_location(self, opportunity) -> str:
+        """Determine the location of an opportunity.
+        Default to Uganda for all opportunities unless specified otherwise.
+        """
+        # Check if location is explicitly mentioned in title or description
+        title = (getattr(opportunity, 'title', '') or '').lower()
+        desc = (getattr(opportunity, 'description', '') or '').lower()
+        text = f"{title} {desc}".strip()
+        
+        # Check for remote indicators
+        remote_indicators = ['remote', 'work from home', 'wfh', 'telecommute', 'virtual']
+        is_remote = any(indicator in text for indicator in remote_indicators)
+        
+        # Check for location indicators
+        if 'kampala' in text:
+            return 'Kampala, Uganda' + (' (Remote)' if is_remote else '')
+        elif any(city in text for city in ['entebbe', 'jinja', 'gulu', 'mbarara', 'mbale']):
+            # Extract the city name that was found
+            for city in ['entebbe', 'jinja', 'gulu', 'mbarara', 'mbale']:
+                if city in text:
+                    return f"{city.title()}, Uganda" + (' (Remote)' if is_remote else '')
+        
+        # Default location is Uganda
+        if is_remote:
+            return 'Remote (Uganda)'
+        else:
+            return 'Uganda'
 
     async def search_opportunities(self, days_back: int = 7, max_opportunities: int = 50, quick_search: bool = False, run_parallel: bool = False) -> Dict[str, Any]:
         """Search for opportunities."""
@@ -161,13 +300,28 @@ class BidSystem:
                     'opportunities_found': 0
                 }
             
-            # Remove duplicates and limit
+            # Remove duplicates
             unique_opportunities = self._remove_duplicate_opportunities(all_opportunities)
-            self.current_opportunities = unique_opportunities[:max_opportunities]
+            
+            # Global IT/ICT relevance filter (enforce only IT/ICT-related opportunities)
+            # But make an exception for United Nations opportunities
+            before_cnt = len(unique_opportunities)
+            it_only = [o for o in unique_opportunities if self._is_it_ict_related(o) or 
+                      (hasattr(o, 'source') and 'united nations' in (o.source or '').lower())]
+            after_cnt = len(it_only)
+            if after_cnt < before_cnt:
+                logger.info(f"Filtered non-IT/ICT opportunities: {before_cnt - after_cnt} excluded, {after_cnt} remain")
+            
+            # Sort by soonest due date, then limit
+            try:
+                it_only.sort(key=lambda o: (o.due_date is None, o.due_date))
+            except Exception:
+                pass
+            self.current_opportunities = it_only[:max_opportunities]
             
             return {
                 'status': 'success',
-                'message': f'Found {len(self.current_opportunities)} unique opportunities',
+                'message': f'Found {len(self.current_opportunities)} unique IT/ICT opportunities',
                 'opportunities_found': len(self.current_opportunities)
             }
             
@@ -552,6 +706,14 @@ class EmailApplicationRequest(BaseModel):
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/job_applications", response_class=HTMLResponse)
+async def job_applications(request: Request):
+    return templates.TemplateResponse("job_applications.html", {"request": request})
+
+@app.get("/government_bids", response_class=HTMLResponse)
+async def government_bids(request: Request):
+    return templates.TemplateResponse("government_bids.html", {"request": request})
+
 @app.get("/api/status")
 async def get_status():
     return JSONResponse(content={
@@ -584,21 +746,131 @@ async def search_opportunities(request: SearchRequest):
     return JSONResponse(content=result)
 
 @app.get("/api/opportunities")
-async def get_opportunities():
-    """Get current opportunities (basic info only, no AI matching)."""
+async def get_opportunities(days_back: Optional[int] = None,
+                            max_opportunities: Optional[int] = None,
+                            quick_search: Optional[bool] = None,
+                            run_parallel: Optional[bool] = None,
+                            limit: Optional[int] = None):
+    """Get current opportunities (basic info only, no AI matching).
+    If search parameters are supplied, trigger a fresh search before returning.
+    Also supports a simple 'limit' to cap the number of returned items without searching.
+    """
+    # If any search params are provided, run a search now
+    if any(p is not None for p in [days_back, max_opportunities, quick_search, run_parallel]):
+        req_days_back = days_back if days_back is not None else 7
+        req_max = max_opportunities if max_opportunities is not None else (limit if limit is not None else 50)
+        req_quick = quick_search if quick_search is not None else False
+        req_parallel = run_parallel if run_parallel is not None else False
+        await bid_system.search_opportunities(
+            days_back=req_days_back,
+            max_opportunities=req_max,
+            quick_search=req_quick,
+            run_parallel=req_parallel
+        )
+
+    # Prepare response from current state (optionally apply 'limit')
     opportunities = []
-    for opp in bid_system.current_opportunities:
+    current = bid_system.current_opportunities
+    if limit is not None and (max_opportunities is None and days_back is None and quick_search is None and run_parallel is None):
+        current = current[:max(0, int(limit))]
+
+    for opp in current:
+        # Determine opportunity type
+        opp_type = 'government' if bid_system._is_government_bid(opp) else 'job'
+        
+        # Get location information
+        location = bid_system._get_opportunity_location(opp)
+        is_remote = 'remote' in location.lower()
+        
         opportunities.append({
             'opportunity_id': opp.opportunity_id,
             'title': opp.title,
             'agency': opp.agency,
             'due_date': opp.due_date.isoformat() if opp.due_date else None,
-            'url': opp.url
+            'url': opp.url,
+            'location': location,
+            'is_remote': is_remote,
+            'source': getattr(opp, 'source', ''),
+            'type': opp_type
         })
     
     return JSONResponse(content={
         'opportunities': opportunities,
         'total': len(opportunities)
+    })
+
+@app.get("/api/opportunities/jobs")
+async def get_job_opportunities(days_back: Optional[int] = None,
+                               max_opportunities: Optional[int] = None,
+                               quick_search: Optional[bool] = None,
+                               run_parallel: Optional[bool] = None,
+                               limit: Optional[int] = None):
+    """Get job opportunities (filtered for job listings only).
+    If search parameters are supplied, trigger a fresh search before returning.
+    """
+    # First get all opportunities (potentially triggering a search)
+    response = await get_opportunities(days_back, max_opportunities, quick_search, run_parallel, None)
+    data = response.body
+    if isinstance(data, bytes):
+        data = json.loads(data)
+    
+    # Filter for job opportunities only
+    job_opportunities = []
+    for opp in bid_system.current_opportunities:
+        if bid_system._is_job_application(opp):
+            job_opportunities.append({
+                'opportunity_id': opp.opportunity_id,
+                'title': opp.title,
+                'agency': opp.agency,
+                'due_date': opp.due_date.isoformat() if opp.due_date else None,
+                'url': opp.url,
+                'source': getattr(opp, 'source', '')
+            })
+    
+    # Apply limit if specified
+    if limit is not None:
+        job_opportunities = job_opportunities[:max(0, int(limit))]
+    
+    return JSONResponse(content={
+        'opportunities': job_opportunities,
+        'total': len(job_opportunities)
+    })
+
+@app.get("/api/opportunities/government")
+async def get_government_opportunities(days_back: Optional[int] = None,
+                                      max_opportunities: Optional[int] = None,
+                                      quick_search: Optional[bool] = None,
+                                      run_parallel: Optional[bool] = None,
+                                      limit: Optional[int] = None):
+    """Get government bid opportunities (filtered for government contracts only).
+    If search parameters are supplied, trigger a fresh search before returning.
+    """
+    # First get all opportunities (potentially triggering a search)
+    response = await get_opportunities(days_back, max_opportunities, quick_search, run_parallel, None)
+    data = response.body
+    if isinstance(data, bytes):
+        data = json.loads(data)
+    
+    # Filter for government bid opportunities only
+    gov_opportunities = []
+    for opp in bid_system.current_opportunities:
+        if bid_system._is_government_bid(opp):
+            gov_opportunities.append({
+                'opportunity_id': opp.opportunity_id,
+                'title': opp.title,
+                'agency': opp.agency,
+                'due_date': opp.due_date.isoformat() if opp.due_date else None,
+                'url': opp.url,
+                'source': getattr(opp, 'source', '')
+            })
+    
+    # Apply limit if specified
+    if limit is not None:
+        gov_opportunities = gov_opportunities[:max(0, int(limit))]
+    
+    return JSONResponse(content={
+        'opportunities': gov_opportunities,
+        'total': len(gov_opportunities)
     })
 
 @app.post("/api/opportunities/match")
@@ -631,7 +903,8 @@ async def get_application_history():
                             'opportunity_agency': meta.get('opportunity_agency'),
                             'generated_date': meta.get('generated_date'),
                             'folder': folder_rel,
-                            'combined_path': combined_path
+                            'combined_path': combined_path,
+                            'view_url': meta.get('opportunity_url')
                         })
             except Exception as e:
                 logger.warning(f"Failed to read application history from {item}: {e}")
@@ -670,6 +943,10 @@ async def get_submission_history():
         except Exception:
             return datetime.min
     entries.sort(key=sort_key2, reverse=True)
+    # Ensure view_url key exists for UI
+    for e in entries:
+        if 'view_url' not in e and 'opportunity_url' in e:
+            e['view_url'] = e.get('opportunity_url')
     return JSONResponse(content={'submissions': entries, 'total': len(entries)})
 
 @app.post("/api/applications/generate")

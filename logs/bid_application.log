@@ -224,3 +224,85 @@
 2025-09-01 15:12:41 | INFO     | scrapers.fbo_scraper:search_opportunities:50 - Found 0 unique opportunities from FBO.gov
 2025-09-01 15:12:41 | INFO     | __main__:run:106 - FBO.gov: Found 0 opportunities
 2025-09-01 15:12:41 | WARNING  | __main__:run:111 - No opportunities found
+2025-09-08 13:39:06 | INFO     | __main__:__init__:48 - Bid Application System initialized
+2025-09-08 13:39:06 | INFO     | __main__:run:83 - Starting bid application process (days_back=7, max_opportunities=50)
+2025-09-08 13:39:06 | INFO     | __main__:run:87 - Step 1: Processing company documents...
+2025-09-08 13:39:06 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: technical_capabilities.txt
+2025-09-08 13:39:06 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: company_profile.txt
+2025-09-08 13:39:07 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: 20250902_122256_NSS Incorperation .pdf
+2025-09-08 13:39:07 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: KCCA trade license.pdf
+2025-09-08 13:39:07 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: 20250903_113819_Keith-docs (3).pdf
+2025-09-08 13:39:07 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: Keith-docs (3).pdf
+2025-09-08 13:39:07 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: 20250902_161718_TWESIGYE KEITH CV.docx
+2025-09-08 13:39:07 | INFO     | processors.document_processor:process_all_documents:71 - Processed 7 documents
+2025-09-08 13:39:07 | INFO     | ai.opportunity_matcher:set_company_profile:57 - Company profile set for opportunity matching
+2025-09-08 13:39:07 | INFO     | __main__:run:98 - Processed 7 documents
+2025-09-08 13:39:07 | INFO     | __main__:run:99 - Company: 
+2025-09-08 13:39:07 | INFO     | __main__:run:100 - Technical keywords: 26
+2025-09-08 13:39:07 | INFO     | __main__:run:103 - Step 2: Searching for opportunities...
+2025-09-08 13:39:07 | INFO     | scrapers.sample_scraper:search_opportunities:18 - Generating sample opportunities for demonstration
+2025-09-08 13:39:07 | INFO     | scrapers.sample_scraper:search_opportunities:143 - Generated 8 sample opportunities
+2025-09-08 13:39:07 | INFO     | __main__:run:113 - Sample Opportunities: Found 8 opportunities
+2025-09-08 13:39:07 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: information technology
+2025-09-08 13:39:10 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=information+technology&sort=-modifiedOn
+2025-09-08 13:39:14 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=information+technology&sort=-modifiedOn
+2025-09-08 13:39:18 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=information+technology&sort=-modifiedOn
+2025-09-08 13:39:18 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:39:18 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: IT services
+2025-09-08 13:39:22 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=IT+services&sort=-modifiedOn
+2025-09-08 13:39:24 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=IT+services&sort=-modifiedOn
+2025-09-08 13:39:28 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=IT+services&sort=-modifiedOn
+2025-09-08 13:39:28 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:39:28 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: software development
+2025-09-08 13:39:30 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=software+development&sort=-modifiedOn
+2025-09-08 13:39:33 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=software+development&sort=-modifiedOn
+2025-09-08 13:39:38 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=software+development&sort=-modifiedOn
+2025-09-08 13:39:38 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:39:38 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: system administration
+2025-09-08 13:39:40 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=system+administration&sort=-modifiedOn
+2025-09-08 13:39:44 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=system+administration&sort=-modifiedOn
+2025-09-08 13:39:49 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=system+administration&sort=-modifiedOn
+2025-09-08 13:39:49 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:39:49 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: network administration
+2025-09-08 13:39:51 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=network+administration&sort=-modifiedOn
+2025-09-08 13:39:55 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=network+administration&sort=-modifiedOn
+2025-09-08 13:40:08 | INFO     | __main__:__init__:48 - Bid Application System initialized
+2025-09-08 13:40:08 | INFO     | __main__:run:83 - Starting bid application process (days_back=7, max_opportunities=50)
+2025-09-08 13:40:08 | INFO     | __main__:run:87 - Step 1: Processing company documents...
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: technical_capabilities.txt
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: company_profile.txt
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: 20250902_122256_NSS Incorperation .pdf
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: KCCA trade license.pdf
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: 20250903_113819_Keith-docs (3).pdf
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: Keith-docs (3).pdf
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:67 - Processed document: 20250902_161718_TWESIGYE KEITH CV.docx
+2025-09-08 13:40:08 | INFO     | processors.document_processor:process_all_documents:71 - Processed 7 documents
+2025-09-08 13:40:08 | INFO     | ai.opportunity_matcher:set_company_profile:57 - Company profile set for opportunity matching
+2025-09-08 13:40:08 | INFO     | __main__:run:98 - Processed 7 documents
+2025-09-08 13:40:08 | INFO     | __main__:run:99 - Company: 
+2025-09-08 13:40:08 | INFO     | __main__:run:100 - Technical keywords: 26
+2025-09-08 13:40:08 | INFO     | __main__:run:103 - Step 2: Searching for opportunities...
+2025-09-08 13:40:08 | INFO     | scrapers.sample_scraper:search_opportunities:18 - Generating sample opportunities for demonstration
+2025-09-08 13:40:08 | INFO     | scrapers.sample_scraper:search_opportunities:143 - Generated 8 sample opportunities
+2025-09-08 13:40:08 | INFO     | __main__:run:113 - Sample Opportunities: Found 8 opportunities
+2025-09-08 13:40:08 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: information technology
+2025-09-08 13:40:11 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=information+technology&sort=-modifiedOn
+2025-09-08 13:40:20 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=information+technology&sort=-modifiedOn
+2025-09-08 13:40:25 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=information+technology&sort=-modifiedOn
+2025-09-08 13:40:25 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:40:25 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: IT services
+2025-09-08 13:40:27 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=IT+services&sort=-modifiedOn
+2025-09-08 13:40:30 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=IT+services&sort=-modifiedOn
+2025-09-08 13:40:33 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=IT+services&sort=-modifiedOn
+2025-09-08 13:40:33 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:40:33 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: software development
+2025-09-08 13:40:35 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=software+development&sort=-modifiedOn
+2025-09-08 13:40:37 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=software+development&sort=-modifiedOn
+2025-09-08 13:40:42 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=software+development&sort=-modifiedOn
+2025-09-08 13:40:42 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:40:42 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: system administration
+2025-09-08 13:40:44 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 1/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=system+administration&sort=-modifiedOn
+2025-09-08 13:40:48 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 2/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=system+administration&sort=-modifiedOn
+2025-09-08 13:40:52 | WARNING  | scrapers.base_scraper:_make_request:68 - Request failed (attempt 3/3): 403 Client Error: Forbidden for url: https://api.sam.gov/prod/opportunities/v2/search?limit=100&offset=0&postedFrom=09%2F01%2F2025&postedTo=09%2F08%2F2025&ptype=o%2Ck%2Cr&q=system+administration&sort=-modifiedOn
+2025-09-08 13:40:52 | ERROR    | scrapers.base_scraper:_make_request:70 - Failed to fetch https://api.sam.gov/prod/opportunities/v2/search after 3 attempts
+2025-09-08 13:40:52 | INFO     | scrapers.sam_gov_scraper:search_opportunities:30 - Searching SAM.gov for keyword: network administration

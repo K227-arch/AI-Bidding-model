@@ -375,7 +375,8 @@ class ApplicationSubmitter:
             'status': result.get('status'),
             'message': result.get('message'),
             'filled_fields': result.get('filled_fields', []),
-            'uploaded_files': result.get('uploaded_files', [])
+            'uploaded_files': result.get('uploaded_files', []),
+            'opportunity_url': getattr(opportunity, 'url', None) or ''
         }
         
         self.submission_log.append(log_entry)

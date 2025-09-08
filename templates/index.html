@@ -47,16 +47,18 @@
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="#">
+            <a class="navbar-brand" href="/">
                 <i class="fas fa-robot me-2"></i>AI Bid Application System
             </a>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/"><i class="fas fa-home"></i></a>
+                    </li>
+                </ul>
+            </div>
             <div class="ms-auto d-flex gap-2">
-                <button class="btn btn-light btn-sm" onclick="openDocumentsModal()">
-                    <i class="fas fa-file-alt me-1"></i>Documents
-                </button>
-                <button class="btn btn-warning btn-sm" onclick="openApplicationsModal()">
-                    <i class="fas fa-file-contract me-1"></i>Applications
-                </button>
+                <!-- Navbar buttons removed as requested -->
             </div>
         </div>
     </nav>
@@ -181,9 +183,25 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h5><i class="fas fa-list me-2"></i>Opportunities</h5>
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshOpportunities()">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
+                        <div class="d-flex gap-2">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-sm btn-outline-primary active" id="btn-all-opportunities" onclick="filterOpportunities('all')">
+                                    All
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-job-opportunities" onclick="filterOpportunities('jobs')">
+                                    <i class="fas fa-briefcase me-1"></i>Jobs
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-gov-opportunities" onclick="filterOpportunities('government')">
+                                    <i class="fas fa-gavel me-1"></i>Gov Bids
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-remote-opportunities" onclick="filterOpportunities('remote')">
+                                    <i class="fas fa-home me-1"></i>Remote
+                                </button>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="refreshOpportunities()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div id="opportunities-list">
@@ -531,9 +549,95 @@
                 
                 opportunities = result.opportunities;
                 displayOpportunities();
+                // Reset active button
+                const allBtn = document.getElementById('btn-all-opportunities');
+                const jobBtn = document.getElementById('btn-job-opportunities');
+                const govBtn = document.getElementById('btn-gov-opportunities');
+                const remoteBtn = document.getElementById('btn-remote-opportunities');
+                
+                if (allBtn) allBtn.classList.add('active');
+                if (jobBtn) jobBtn.classList.remove('active');
+                if (govBtn) govBtn.classList.remove('active');
+                if (remoteBtn) remoteBtn.classList.remove('active');
             } catch (error) {
                 console.error('Failed to refresh opportunities:', error);
             }
+        }
+        
+        function filterOpportunities(type) {
+            // Update active button
+            const allBtn = document.getElementById('btn-all-opportunities');
+            const jobBtn = document.getElementById('btn-job-opportunities');
+            const govBtn = document.getElementById('btn-gov-opportunities');
+            const remoteBtn = document.getElementById('btn-remote-opportunities');
+            const activeBtn = document.getElementById(`btn-${type}-opportunities`);
+            
+            if (allBtn) allBtn.classList.remove('active');
+            if (jobBtn) jobBtn.classList.remove('active');
+            if (govBtn) govBtn.classList.remove('active');
+            if (remoteBtn) remoteBtn.classList.remove('active');
+            if (activeBtn) activeBtn.classList.add('active');
+            
+            let filteredOpportunities = [];
+            
+            if (type === 'all') {
+                filteredOpportunities = opportunities;
+            } else if (type === 'jobs') {
+                filteredOpportunities = opportunities.filter(opp => opp.type === 'job');
+            } else if (type === 'government') {
+                filteredOpportunities = opportunities.filter(opp => opp.type === 'government');
+            } else if (type === 'remote') {
+                filteredOpportunities = opportunities.filter(opp => opp.is_remote === true);
+            }
+            
+            // Update display with filtered opportunities
+            const container = document.getElementById('opportunities-list');
+            
+            if (filteredOpportunities.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-search fa-3x mb-3"></i>
+                        <p>No ${type} opportunities found.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = filteredOpportunities.map(opp => {
+                return `
+                    <div class="card opportunity-card mb-3 ${opp.is_remote ? 'border-success' : ''}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="card-title mb-0">
+                                    ${opp.title}
+                                    ${opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : ''}
+                                    ${opp.agency && opp.agency.includes('United Nations') ? 
+                                      '<span class="badge bg-primary ms-2">UN</span>' : 
+                                      `<span class="badge ${opp.type === 'job' ? 'bg-info text-dark' : 'bg-warning text-dark'} ms-2">${opp.type === 'job' ? 'Job' : 'Gov Bid'}</span>`}
+                                </h6>
+                            </div>
+                            <p class="card-text text-muted small mb-2">
+                                <i class="fas fa-building me-1"></i>${opp.agency}
+                                ${opp.due_date ? `<i class="fas fa-calendar ms-3 me-1"></i>${new Date(opp.due_date).toLocaleDateString()}` : ''}
+                                <i class="fas fa-map-marker-alt ms-3 me-1"></i>${opp.location || 'Uganda'}
+                            </p>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                                    <i class="fas fa-file-contract me-1"></i>Generate Application
+                                </button>
+                                <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${opp.opportunity_id}')">
+                                    <i class="fas fa-paper-plane me-1"></i>Send Email
+                                </button>
+                                ${opp.url ? `<a href="${opp.url}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>View Details
+                                </a>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = html;
         }
 
         function displayOpportunities() {
@@ -550,11 +654,24 @@
             }
 
             const html = opportunities.map(opp => {
+                // Add a badge to indicate opportunity type
+                let typeBadge = '';
+                if (opp.type === 'job') {
+                    typeBadge = '<span class="badge bg-info text-dark me-2"><i class="fas fa-briefcase me-1"></i>Job</span>';
+                } else if (opp.agency && opp.agency.includes('United Nations')) {
+                    typeBadge = '<span class="badge bg-primary text-white me-2"><i class="fas fa-globe me-1"></i>UN</span>';
+                } else {
+                    typeBadge = '<span class="badge bg-warning text-dark me-2"><i class="fas fa-gavel me-1"></i>Gov Bid</span>';
+                }
+                
                 return `
                     <div class="card opportunity-card mb-3">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h6 class="card-title mb-0">${opp.title}</h6>
+                                <div>
+                                    ${typeBadge}
+                                    <h6 class="card-title d-inline mb-0">${opp.title}</h6>
+                                </div>
                             </div>
                             <p class="card-text text-muted small mb-2">
                                 <i class="fas fa-building me-1"></i>${opp.agency}
@@ -599,6 +716,7 @@
             container.innerHTML = items.map(item => {
                 const dateStr = item.generated_date ? new Date(item.generated_date).toLocaleString() : '';
                 const combinedUrl = item.combined_path ? `/${item.combined_path}` : '#';
+                const externalUrl = item.view_url || item.opportunity_url || '';
                 return `
                     <div class="d-flex justify-content-between align-items-start border rounded p-2 mb-2">
                         <div>
@@ -610,6 +728,7 @@
                             <a class="btn btn-sm btn-outline-primary" target="_blank" href="${combinedUrl}">
                                 <i class="fas fa-file-alt me-1"></i>Open
                             </a>
+                            ${externalUrl ? `<a class="btn btn-sm btn-outline-secondary" target="_blank" href="${externalUrl}"><i class="fas fa-external-link-alt me-1"></i>View on site</a>` : ''}
                             <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${item.opportunity_id}')">
                                 <i class="fas fa-paper-plane me-1"></i>Email Package
                             </button>
@@ -639,6 +758,7 @@
             container.innerHTML = items.map(s => {
                 const dt = s.timestamp ? new Date(s.timestamp).toLocaleString() : '';
                 const statusBadge = s.status === 'success' ? 'success' : (s.status === 'error' ? 'danger' : 'secondary');
+                const externalUrl = s.view_url || s.opportunity_url || '';
                 return `
                     <div class="border rounded p-2 mb-2">
                         <div class="d-flex justify-content-between align-items-center">
@@ -647,6 +767,7 @@
                         </div>
                         <div class="text-muted small"><i class="fas fa-clock me-1"></i>${dt}</div>
                         ${s.message ? `<div>${s.message}</div>` : ''}
+                        ${externalUrl ? `<div class=\"mt-2\"><a class=\"btn btn-sm btn-outline-secondary\" target=\"_blank\" href=\"${externalUrl}\"><i class=\"fas fa-external-link-alt me-1\"></i>View posting</a></div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -849,6 +970,7 @@
     <a class="btn btn-sm btn-outline-primary" target="_blank" href="${combinedUrl}">
       <i class="fas fa-file-alt me-1"></i>Open
     </a>
+    ${externalUrl ? `<a class="btn btn-sm btn-outline-secondary" target="_blank" href="${externalUrl}"><i class="fas fa-external-link-alt me-1"></i>View on site</a>` : ''}
     <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${item.opportunity_id}')">
       <i class="fas fa-paper-plane me-1"></i>Email
     </button>
@@ -865,6 +987,7 @@
                     subsList.innerHTML = subsData.submissions.map(s => {
                         const dt = s.timestamp ? new Date(s.timestamp).toLocaleString() : '';
                         const statusBadge = s.status === 'success' ? 'success' : (s.status === 'error' ? 'danger' : 'secondary');
+                        const externalUrl = s.view_url || s.opportunity_url || '';
                         return `
 <div class="border rounded p-2 mb-2">
   <div class="d-flex justify-content-between align-items-center">
@@ -873,6 +996,7 @@
   </div>
   <div class="text-muted"><i class="fas fa-clock me-1"></i>${dt}</div>
   ${s.message ? `<div>${s.message}</div>` : ''}
+  ${externalUrl ? `<div class="mt-2"><a class="btn btn-sm btn-outline-secondary" target="_blank" href="${externalUrl}"><i class="fas fa-external-link-alt me-1"></i>View posting</a></div>` : ''}
 </div>`;
                     }).join('');
                 }

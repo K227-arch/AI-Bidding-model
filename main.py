@@ -14,7 +14,7 @@ from loguru import logger
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from config import settings
-from scrapers import SAMGovScraper, FBOScraper, SampleScraper, RemotiveScraper, RemoteOKScraper, UgandaSampleScraper
+from scrapers import SAMGovScraper, FBOScraper, SampleScraper, RemotiveScraper, RemoteOKScraper, UgandaSampleScraper, EGPUgandaScraper, UpworkScraper, NewVisionTendersScraper
 from processors import DocumentProcessor
 from ai import OpportunityMatcher
 from applicators import ApplicationGenerator, ApplicationSubmitter
@@ -40,6 +40,9 @@ class BidApplicationSystem:
             RemotiveScraper(),
             RemoteOKScraper(),
             UgandaSampleScraper(),
+            EGPUgandaScraper(),
+            UpworkScraper(),
+            NewVisionTendersScraper(),
         ]
         
         logger.info("Bid Application System initialized")

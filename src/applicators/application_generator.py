@@ -115,7 +115,8 @@ class ApplicationGenerator:
             'opportunity_agency': opportunity.agency,
             'generated_date': datetime.now().isoformat(),
             'company_name': company_profile.get('company_name') or '',
-            'signatory_name': company_profile.get('signatory_name') or os.environ.get('SIGNATORY_NAME')
+            'signatory_name': company_profile.get('signatory_name') or os.environ.get('SIGNATORY_NAME'),
+            'opportunity_url': getattr(opportunity, 'url', None) or ''
         }
         
         return application_package
@@ -424,7 +425,8 @@ class ApplicationGenerator:
             'opportunity_title': application_package.get('opportunity_title'),
             'opportunity_agency': application_package.get('opportunity_agency'),
             'generated_date': application_package.get('generated_date'),
-            'folder': str(app_folder)
+            'folder': str(app_folder),
+            'opportunity_url': application_package.get('opportunity_url')
         }
         with open(app_folder / 'metadata.json', 'w', encoding='utf-8') as mf:
             import json as _json
