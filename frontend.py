@@ -19,6 +19,7 @@ import asyncio
 from loguru import logger
 from uuid import uuid4
 from typing import Tuple
+import shutil
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -528,7 +529,8 @@ class BidSystem:
 
     async def email_application(self, opportunity_id: str, to: Optional[List[str]] = None,
                                 extra_doc_keywords: Optional[List[str]] = None,
-                                extra_doc_names: Optional[List[str]] = None) -> Dict[str, Any]:
+                                extra_doc_names: Optional[List[str]] = None,
+                                selected_only: Optional[bool] = False) -> Dict[str, Any]:
         """Send the most recent application for an opportunity via email with specified attachments."""
         # Find opportunity details and match_result if available
         title = None
@@ -594,7 +596,10 @@ class BidSystem:
 
         # Merge requested extra keywords with defaults and required
         default_keywords = ["wic", "company profile", "technical capabilities"]
-        merged_keywords = (extra_doc_keywords or []) + required_keywords + default_keywords
+        if selected_only:
+            merged_keywords = (extra_doc_keywords or [])
+        else:
+            merged_keywords = (extra_doc_keywords or []) + required_keywords + default_keywords
 
         result = self.email_sender.send_application_package(
             opportunity_id=opportunity_id,
@@ -701,6 +706,12 @@ class EmailApplicationRequest(BaseModel):
     to: Optional[List[str]] = None
     extra_doc_keywords: Optional[List[str]] = None
     extra_doc_names: Optional[List[str]] = None
+    selected_only: Optional[bool] = False
+
+class TestEmailRequest(BaseModel):
+    to: Optional[List[str]] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -729,6 +740,13 @@ async def test_endpoint():
         'message': 'Backend is running',
         'timestamp': datetime.now().isoformat()
     })
+
+@app.post("/api/email/test")
+async def email_test(request: TestEmailRequest):
+    subject = request.subject or f"SMTP Test - {datetime.now().isoformat()}"
+    body = request.body or "This is a test email from your AI Bid Application System."
+    result = bid_system.email_sender.send_email(subject=subject, body=body, to=request.to)
+    return JSONResponse(content=result)
 
 @app.post("/api/documents/process")
 async def process_documents():
@@ -949,6 +967,28 @@ async def get_submission_history():
             e['view_url'] = e.get('opportunity_url')
     return JSONResponse(content={'submissions': entries, 'total': len(entries)})
 
+# Delete a generated application by its folder path (relative to applications/)
+@app.delete("/api/applications/{folder_path:path}")
+async def delete_application(folder_path: str):
+    apps_root = Path("applications").resolve()
+    # Support if client sends folder with or without leading 'applications/'
+    target = (apps_root / folder_path).resolve() if not folder_path.startswith(str(apps_root)) else Path(folder_path).resolve()
+    # Ensure the target is within applications directory to prevent path traversal
+    try:
+        str_target = str(target)
+        str_root = str(apps_root)
+        if not str_target.startswith(str_root + os.sep) and str_target != str_root:
+            raise HTTPException(status_code=400, detail="Invalid folder path")
+        if not target.exists() or not target.is_dir():
+            raise HTTPException(status_code=404, detail="Application folder not found")
+        shutil.rmtree(target)
+        return JSONResponse(content={"status": "success", "message": "Application deleted"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete application at {target}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete application")
+
 @app.post("/api/applications/generate")
 async def generate_application(request: GenerationRequest):
     """Generate application for an opportunity. Defaults to background job with optional fast_mode."""
@@ -971,7 +1011,8 @@ async def email_application(request: EmailApplicationRequest):
         request.opportunity_id,
         request.to,
         extra_doc_keywords=request.extra_doc_keywords,
-        extra_doc_names=request.extra_doc_names
+        extra_doc_names=request.extra_doc_names,
+        selected_only=request.selected_only
     )
     return JSONResponse(content=result)
 

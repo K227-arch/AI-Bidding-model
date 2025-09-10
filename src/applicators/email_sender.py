@@ -10,6 +10,9 @@ from typing import List, Dict, Any, Optional, Tuple
 from email.message import EmailMessage
 from datetime import datetime
 from loguru import logger
+import re
+import requests
+from urllib.parse import urlparse
 
 from config import settings
 
@@ -153,15 +156,6 @@ class EmailSender:
         if len(text) <= limit:
             return text
         return text[:limit].rsplit(" ", 1)[0] + "…"
-
-    def _read_section(self, app_folder: Path, filename: str) -> Optional[str]:
-        p = app_folder / filename
-        if p.exists():
-            try:
-                return p.read_text(encoding="utf-8", errors="ignore").strip()
-            except Exception:
-                return None
-        return None
 
     def _build_html_package_email(self, meta: Dict[str, Any], app_folder: Path, attachments: List[Path]) -> Tuple[str, str]:
         """Return (plain_text, html) body for the application email."""
@@ -333,5 +327,15 @@ class EmailSender:
         plain_text, html = self._build_html_package_email(meta, app_folder, attachments)
 
         subject = f"Application Package: {opportunity_title} - {opportunity_agency}" if opportunity_agency else f"Application Package: {opportunity_title}"
+        # Auto-derive recipients when not explicitly provided
+        recipients = to
+        if not recipients:
+            try:
+                recipients = self._derive_recipients(meta, app_folder)
+                if not recipients and self.default_to:
+                    recipients = [self.default_to]
+            except Exception as e:
+                logger.warning(f"Failed to derive recipients automatically: {e}")
+                recipients = [self.default_to] if self.default_to else None
 
-        return self.send_email(subject=subject, body=plain_text, body_html=html, to=to, attachments=attachments)
+        return self.send_email(subject=subject, body=plain_text, body_html=html, to=recipients, attachments=attachments)

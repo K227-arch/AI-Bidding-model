@@ -3,7 +3,7 @@ Configuration management for the AI bid application system.
 """
 import os
 from typing import List, Optional
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -79,6 +79,15 @@ class Settings(BaseSettings):
         "https://www.grants.gov",
         "https://www.usaspending.gov"
     ]
+
+    # Validators
+    @field_validator("smtp_password", mode="before")
+    @classmethod
+    def _clean_smtp_password(cls, v):
+        """Normalize pasted Gmail app passwords by stripping quotes and spaces."""
+        if isinstance(v, str):
+            return v.strip().replace('"', '').replace("'", "").replace(" ", "")
+        return v
 
 class Config:
     env_file = ".env"

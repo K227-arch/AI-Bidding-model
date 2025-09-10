@@ -123,47 +123,86 @@ class ApplicationGenerator:
     
     def _generate_cover_letter(self, match_result: MatchResult, 
                              company_profile: Dict[str, Any]) -> str:
-        """Generate cover letter using AI."""
+        """Generate cover letter using AI.
+        Differentiates between government bids (tenders/RFPs) and job applications with distinct structures.
+        """
         opportunity = match_result.opportunity
         
         company_name = company_profile.get('company_name', 'Our Company')
         signatory = company_profile.get('signatory_name') or os.environ.get('SIGNATORY_NAME')
-        signoff_instructions = f"End with a sign-off that includes exactly: 'Sincerely,' on one line, '{company_name}' on the next line" + (f", and '{signatory}' on the following line" if signatory else "") + "."
+        signoff_instructions = (
+            f"End with a sign-off that includes exactly: 'Sincerely,' on one line, '{company_name}' on the next line"
+            + (f", and '{signatory}' on the following line" if signatory else "") + "."
+        )
         
-        prompt = f"""
-        Write a professional cover letter for this government contracting opportunity.
+        # Heuristic to determine if this is a government/public-sector bid as opposed to a job application
+        source = (getattr(opportunity, 'source', '') or '').lower()
+        agency_l = (getattr(opportunity, 'agency', '') or '').lower()
+        title_l = (getattr(opportunity, 'title', '') or '').lower()
+        desc_l = (getattr(opportunity, 'description', '') or '').lower()
+        text = f"{title_l} {desc_l}".strip()
+        gov_sources = ['samgov', 'fbo', 'egpuganda', 'newvisiontenders', 'ugandatenders', 'united nations', 'undp', 'unicef', 'unops']
+        gov_indicators = ['government', 'ministry', 'department', 'agency', 'federal', 'state', 'municipal', 'city of', 'public', 'authority', 'commission', 'bureau', 'public sector', 'united nations', 'undp', 'unicef', 'unops']
+        gov_bid_indicators = ['rfp', 'request for proposal', 'rfq', 'request for quotation', 'rfi', 'request for information', 'eoi', 'expression of interest', 'ifb', 'invitation for bids', 'invitation to bid', 'tender', 'solicitation', 'procurement notice', 'bid notice', 'contract notice', 'framework agreement', 'government contract', 'public procurement']
+        is_gov = (
+            any(gs in source for gs in gov_sources) or
+            any(ind in agency_l for ind in gov_indicators) or
+            any(ind in text for ind in gov_bid_indicators)
+        )
         
-        OPPORTUNITY DETAILS:
-        Title: {opportunity.title}
-        Agency: {opportunity.agency}
-        Description: {opportunity.description[:1000]}
-        Due Date: {opportunity.due_date}
-        
-        OUR COMPANY:
-        Name: {company_name}
-        Capabilities: {', '.join(company_profile.get('technical_keywords', [])[:10])}
-        
-        MATCHING KEYWORDS: {', '.join(match_result.matching_keywords)}
-        
-        Requirements:
-        - Use the company name exactly as provided above and do not mention any other company names.
-        - {signoff_instructions}
-        
-        Write a compelling cover letter that:
-        1. Expresses strong interest in the opportunity
-        2. Highlights relevant capabilities and experience
-        3. Demonstrates understanding of the requirements
-        4. Shows value proposition
-        5. Is professional and government contracting appropriate
-        
-        Keep it concise (2-3 paragraphs) and professional.
-        """
+        if is_gov:
+            system_role = "You are an expert in government contracting and proposal writing."
+            prompt = f"""
+            Draft a professional but persuasive government bid cover letter that strictly follows this structure:
+            
+            Cover letter header: Company info (name and available contact) + recipient’s info (agency: {opportunity.agency}).
+            Subject line: "Application for Tender No. {opportunity.opportunity_id} / Proposal for {opportunity.title}".
+            Introduction: who we are and what we’re applying for.
+            Company profile summary: credentials, experience, and technical capacity (use up to 3-5 concise bullets from: {', '.join(company_profile.get('technical_keywords', [])[:10])}).
+            Attention to client needs: show we understand {opportunity.agency}'s business pain points using context from the description: {opportunity.description[:1000]}.
+            Value proposition: explain how our solution saves money, improves efficiency, or adds innovation.
+            Flexibility: emphasize adaptability, custom solutions, and after-sales support.
+            Track record: highlight previous success stories and satisfied clients (brief and relevant).
+            Compliance: explicitly state we “tick all boxes” of compliance (mandatory documents, certifications, technical specs, delivery schedule, submission format and deadlines).
+            Closing: polite request for consideration and willingness for further discussion.
+            
+            Requirements:
+            - Professional but persuasive tone suitable for public procurement.
+            - Use short sections with clear headings (as listed above).
+            - Keep it concise (roughly 300–500 words).
+            - {signoff_instructions}
+            - Use the company name exactly as provided: {company_name}.
+            - MATCHING KEYWORDS: {', '.join(match_result.matching_keywords)}
+            """
+        else:
+            system_role = "You are an expert career writer for job applications."
+            prompt = f"""
+            Draft a professional job application cover letter tailored to this role.
+            
+            Role/Opportunity Title: {opportunity.title}
+            Organization: {opportunity.agency}
+            Description context: {opportunity.description[:1000]}
+            Candidate/company highlights: {', '.join(company_profile.get('technical_keywords', [])[:10])}
+            
+            Structure:
+            - Subject line: "Application for {opportunity.title}".
+            - Introduction: who we are and what we’re applying for.
+            - Relevant experience & achievements aligned to the role (2 short paragraphs or bullets).
+            - Value we bring (impact, reliability, culture fit, availability, location/remote if relevant).
+            - Brief closing with call to action for next steps.
+            
+            Requirements:
+            - Friendly but professional tone.
+            - Keep to 200–350 words, crisp and specific.
+            - {signoff_instructions}
+            - Use the company name exactly as provided: {company_name}.
+            """
         
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are an expert in government contracting and proposal writing."},
+                    {"role": "system", "content": system_role},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
@@ -438,18 +477,55 @@ class ApplicationGenerator:
     # Fallback templates
     def _get_fallback_cover_letter(self, opportunity: BidOpportunity, 
                                  company_profile: Dict[str, Any]) -> str:
-        return f"""
-Dear Contracting Officer,
+        company_name = company_profile.get('company_name', 'Our Company')
+        signatory = company_profile.get('signatory_name') or os.environ.get('SIGNATORY_NAME')
+        agency = getattr(opportunity, 'agency', '') or 'Client'
+        title = getattr(opportunity, 'title', '') or 'the opportunity'
+        opp_id = getattr(opportunity, 'opportunity_id', '') or 'N/A'
 
-We are pleased to submit our proposal for {opportunity.title} (Solicitation #{opportunity.opportunity_id}).
+        # Simple heuristic to determine if this is a government/public-sector bid
+        source = (getattr(opportunity, 'source', '') or '').lower()
+        agency_l = agency.lower()
+        title_l = title.lower()
+        desc_l = (getattr(opportunity, 'description', '') or '').lower()
+        text = f"{title_l} {desc_l}".strip()
+        gov_sources = ['samgov', 'fbo', 'egpuganda', 'newvisiontenders', 'ugandatenders', 'united nations', 'undp', 'unicef', 'unops']
+        gov_indicators = ['government', 'ministry', 'department', 'agency', 'federal', 'state', 'municipal', 'city of', 'public', 'authority', 'commission', 'bureau', 'public sector', 'united nations', 'undp', 'unicef', 'unops']
+        gov_bid_indicators = ['rfp', 'request for proposal', 'rfq', 'request for quotation', 'rfi', 'request for information', 'eoi', 'expression of interest', 'ifb', 'invitation for bids', 'invitation to bid', 'tender', 'solicitation', 'procurement notice', 'bid notice', 'contract notice', 'framework agreement', 'government contract', 'public procurement']
+        is_gov = (
+            any(gs in source for gs in gov_sources) or
+            any(ind in agency_l for ind in gov_indicators) or
+            any(ind in text for ind in gov_bid_indicators)
+        )
 
-{company_profile.get('company_name', 'Our Company')} is a qualified provider of IT and cybersecurity services with extensive experience in government contracting. We are confident that our capabilities and approach make us an ideal partner for this opportunity.
-
-We look forward to the opportunity to discuss our proposal and demonstrate how we can deliver exceptional value for {opportunity.agency}.
-
-Sincerely,
-{company_profile.get('company_name', 'Our Company')}
-        """.strip()
+        if is_gov:
+            parts = []
+            parts.append(f"{company_name}\nTo: {agency}")
+            parts.append(f"Subject: Application for Tender No. {opp_id} / Proposal for {title}")
+            parts.append("")
+            parts.append("Introduction\nWe are pleased to submit our proposal for the above-referenced opportunity. As a qualified provider of IT and cybersecurity services, we are applying to deliver this work for " + agency + ".")
+            parts.append("Company Profile Summary\n- Proven credentials in public-sector IT delivery\n- Experienced team and established processes\n- Technical capacity across software, cloud, data, and security")
+            parts.append("Attention to Client Needs\nWe understand your objectives and pain points, including the need to improve efficiency, ensure compliance, and deliver reliable, secure services.")
+            parts.append("Value Proposition\nOur solution reduces total cost of ownership, streamlines operations, and introduces modern, secure architectures that accelerate delivery.")
+            parts.append("Flexibility\nWe tailor our approach to your environment, offer configurable solutions, and provide responsive after-sales support.")
+            parts.append("Track Record\nWe have successfully delivered similar projects for public-sector clients, achieving on-time delivery, measurable efficiency gains, and high user satisfaction.")
+            parts.append("Compliance\nWe will tick all boxes of compliance, including mandatory documents, certifications, technical specifications, delivery schedule, and submission format and deadlines.")
+            parts.append("Closing\nWe respectfully request your consideration and would welcome the opportunity to discuss our proposal further.")
+            parts.append("")
+            parts.append("Sincerely,\n" + company_name + ("\n" + signatory if signatory else ""))
+            return "\n\n".join(parts).strip()
+        else:
+            lines = []
+            lines.append(f"Subject: Application for {title}")
+            lines.append("")
+            lines.append("Dear Hiring Manager,")
+            lines.append("")
+            lines.append(f"I am writing to express interest in the {title} role at {agency}. Our team brings relevant experience across {', '.join(company_profile.get('technical_keywords', [])[:8])}.")
+            lines.append("We have delivered successful outcomes on similar engagements and would bring the same focus on quality, collaboration, and measurable impact to your organization.")
+            lines.append("I would welcome the opportunity to discuss how we can contribute to your goals and move forward with next steps.")
+            lines.append("")
+            lines.append("Sincerely,\n" + company_name + ("\n" + signatory if signatory else ""))
+            return "\n".join(lines).strip()
     
     def _get_fallback_technical_approach(self, opportunity: BidOpportunity) -> str:
         return f"""
@@ -516,7 +592,7 @@ Our approach combines technical excellence with deep understanding of government
     
     # Template content
     def _get_cover_letter_template(self) -> str:
-        return """Dear Contracting Officer,
+        return """Dear sir /madame,
 
 We are pleased to submit our proposal for [OPPORTUNITY_TITLE] (Solicitation #[OPPORTUNITY_ID]).
 

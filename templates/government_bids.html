@@ -1,4 +1,4 @@
-nmjmn.,gh,ghbn                 <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -14,54 +14,19 @@ nmjmn.,gh,ghbn                 <!DOCTYPE html>
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        .opportunity-card {
-            border-left: 4px solid #007bff;
-        }
-        .opportunity-card.high-match {
-            border-left-color: #28a745;
-        }
-        .opportunity-card.medium-match {
-            border-left-color: #ffc107;
-        }
-        .opportunity-card.low-match {
-            border-left-color: #dc3545;
-        }
-        .loading {
-            display: none;
-        }
-        .loading.show {
-            display: block;
-        }
+        .opportunity-card { border-left: 4px solid #007bff; }
+        .opportunity-card.high-match { border-left-color: #28a745; }
+        .opportunity-card.medium-match { border-left-color: #ffc107; }
+        .opportunity-card.low-match { border-left-color: #dc3545; }
+        .loading { display: none; }
+        .loading.show { display: block; }
         .status-card.clickable { cursor: pointer; }
     </style>
 </head>
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-robot me-2"></i>AI Bid Application System
-            </a>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/job_applications">Job Applications</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/government_bids">Government Bids</a>
-                    </li>
-                </ul>
-            </div>
-            <div class="ms-auto d-flex gap-2">
-                <button class="btn btn-light btn-sm" onclick="openDocumentsModal()">
-                    <i class="fas fa-file-alt me-1"></i>Documents
-                </button>
-                <button class="btn btn-warning btn-sm" onclick="openApplicationsModal()">
-                    <i class="fas fa-file-contract me-1"></i>Applications
-                </button>
-            </div>
+            <a class="navbar-brand" href="/">AI Bid Application System</a>
         </div>
     </nav>
 
@@ -70,7 +35,7 @@ nmjmn.,gh,ghbn                 <!DOCTYPE html>
             <div class="col-12">
                 <div class="card">
                     <div class="card-header bg-warning text-dark">
-                        <h4><i class="fas fa-gavel me-2"></i>Government Bids & Contracts</h4>
+                        <h4>Government Bids & Contracts</h4>
                     </div>
                     <div class="card-body">
                         <p class="lead">Browse and manage government contract opportunities from various sources.</p>
@@ -81,74 +46,43 @@ nmjmn.,gh,ghbn                 <!DOCTYPE html>
 
         <!-- Search Controls -->
         <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="input-group">
+                    <input type="text" id="searchGovernmentQuery" class="form-control" placeholder="Search bids...">
+                    <button class="btn btn-primary" id="searchGovernmentBidsBtn">Search</button>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="parallelScrapers">
+                    <label class="form-check-label" for="parallelScrapers">Run scrapers in parallel</label>
+                </div>
+            </div>
+            <div class="col-md-4 text-md-end mt-2 mt-md-0">
+                <button class="btn btn-secondary" id="refreshGovernmentBidsBtn">Refresh</button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Government Bid Opportunities</h5>
+                        <small class="text-muted" id="govOppCount"></small>
+                    </div>
+                    <div class="card-body">
+                        <div id="governmentOppList">
+                            <div class="text-center text-muted py-3" id="govEmptyState">No opportunities yet. Click Search to find government bid opportunities.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="col-md-4">
                 <div class="card mb-4">
                     <div class="card-header">
-                        <h5><i class="fas fa-search me-2"></i>Search Government Bids</h5>
+                        <h5 class="mb-0">Government Bid Application History</h5>
                     </div>
                     <div class="card-body">
-                        <div class="mb-3">
-                            <label class="form-label">Days Back</label>
-                            <input type="number" class="form-control" id="days-back" value="14" min="1" max="30">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Max Opportunities</label>
-                            <input type="number" class="form-control" id="max-opportunities" value="50" min="1" max="200">
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" id="quick-search" checked>
-                            <label class="form-check-label" for="quick-search">
-                                Quick Search (limit keyword count)
-                            </label>
-                        </div>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="run-parallel" checked>
-                            <label class="form-check-label" for="run-parallel">
-                                Run scrapers in parallel
-                            </label>
-                        </div>
-                        <button class="btn btn-warning w-100" onclick="searchGovBidOpportunities()">
-                            <i class="fas fa-search me-2"></i>Search Bids
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Column - Results -->
-            <div class="col-md-8">
-                <!-- Government Bid Opportunities List -->
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-list me-2"></i>Government Bid Opportunities</h5>
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshGovBidOpportunities()">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <div id="gov-bid-opportunities-list">
-                            <div class="text-center text-muted">
-                                <i class="fas fa-search fa-3x mb-3"></i>
-                                <p>Search for government bid opportunities to see results here</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Government Bid Applications History -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-history me-2"></i>Government Bid Application History</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="gov-bid-applications-history">
-                            <div class="text-center text-muted">
-                                <i class="fas fa-file-contract fa-3x mb-3"></i>
-                                <p>Your government bid application history will appear here</p>
-                            </div>
+                        <div id="governmentHistoryList">
+                            <div class="text-center text-muted py-3" id="govHistoryEmptyState">No application activity yet.</div>
                         </div>
                     </div>
                 </div>
@@ -156,197 +90,9 @@ nmjmn.,gh,ghbn                 <!DOCTYPE html>
         </div>
     </div>
 
-    <!-- Include the same modals from index.html -->
-    <!-- Document Upload Modal -->
-    <div class="modal fade" id="documentsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-file-alt me-2"></i>Company Documents</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="documents-list">
-                        <div class="text-center text-muted">
-                            <p>Loading documents...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Applications Modal -->
-    <div class="modal fade" id="applicationsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-file-contract me-2"></i>Generated Applications</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="applications-list">
-                        <div class="text-center text-muted">
-                            <p>Loading applications...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Function to fetch government bid opportunities
-        async function searchGovBidOpportunities() {
-            const daysBack = document.getElementById('days-back').value;
-            const maxOpportunities = document.getElementById('max-opportunities').value;
-            const quickSearch = document.getElementById('quick-search').checked;
-            const runParallel = document.getElementById('run-parallel').checked;
-            
-            const listElement = document.getElementById('gov-bid-opportunities-list');
-            listElement.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Searching for government bid opportunities...</p></div>';
-            
-            try {
-                const response = await fetch(`/api/opportunities/government?days_back=${daysBack}&max_opportunities=${maxOpportunities}&quick_search=${quickSearch}&run_parallel=${runParallel}`);
-                const data = await response.json();
-                displayGovBidOpportunities(data.opportunities);
-            } catch (error) {
-                console.error('Error fetching government bid opportunities:', error);
-                listElement.innerHTML = '<div class="text-center text-danger"><p>Error loading government bid opportunities. Please try again.</p></div>';
-            }
-        }
-        
-        // Display government bid opportunities
-        function displayGovBidOpportunities(opportunities) {
-            const container = document.getElementById('gov-bid-opportunities-list');
-            
-            if (!opportunities || opportunities.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center text-muted">
-                        <i class="fas fa-search fa-3x mb-3"></i>
-                        <p>No government bid opportunities found. Try searching for opportunities.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const html = opportunities.map(opp => {
-                return `
-                    <div class="card opportunity-card mb-3">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <div>
-                                    <span class="badge bg-warning text-dark me-2"><i class="fas fa-gavel me-1"></i>Gov Bid</span>
-                                    <h6 class="card-title d-inline mb-0">${opp.title}</h6>
-                                </div>
-                            </div>
-                            <p class="card-text text-muted small mb-2">
-                                <i class="fas fa-building me-1"></i>${opp.agency}
-                                ${opp.due_date ? `<i class=\"fas fa-calendar ms-3 me-1\"></i>${new Date(opp.due_date).toLocaleDateString()}` : ''}
-                            </p>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
-                                    <i class="fas fa-file-contract me-1"></i>Generate Application
-                                </button>
-                                <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${opp.opportunity_id}')">
-                                    <i class="fas fa-paper-plane me-1"></i>Send Email
-                                </button>
-                                ${opp.url ? `<a href="${opp.url}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                    <i class="fas fa-external-link-alt me-1"></i>View Details
-                                </a>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            
-            container.innerHTML = html;
-        }
-
-        function refreshGovBidOpportunities() {
-            searchGovBidOpportunities();
-        }
-
-        // Load government bid application history
-        async function loadGovBidApplicationHistory() {
-            const historyElement = document.getElementById('gov-bid-applications-history');
-            historyElement.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading government bid application history...</p></div>';
-            
-            try {
-                const response = await fetch('/api/history/applications/government');
-                const data = await response.json();
-                
-                if (data.applications && data.applications.length > 0) {
-                    historyElement.innerHTML = '';
-                    data.applications.forEach(app => {
-                        const card = document.createElement('div');
-                        card.className = 'card mb-3';
-                        card.innerHTML = `
-                            <div class="card-body">
-                                <h5 class="card-title">${app.opportunity_title || 'Untitled'}</h5>
-                                <h6 class="card-subtitle mb-2 text-muted">${app.opportunity_agency || 'Unknown'}</h6>
-                                <p class="card-text">
-                                    <small class="text-muted">
-                                        <i class="fas fa-calendar-alt me-1"></i>${app.generated_date ? new Date(app.generated_date).toLocaleDateString() : 'Unknown date'}
-                                    </small>
-                                </p>
-                                <div class="d-flex justify-content-between">
-                                    <a href="/applications/${app.folder}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="fas fa-file-alt me-1"></i>View Application
-                                    </a>
-                                    <button class="btn btn-sm btn-info" onclick="emailApplication('${app.opportunity_id}')">
-                                        <i class="fas fa-envelope me-1"></i>Email
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-                        historyElement.appendChild(card);
-                    });
-                } else {
-                    historyElement.innerHTML = '<div class="text-center text-muted"><p>No government bid applications found.</p></div>';
-                }
-            } catch (error) {
-                console.error('Error fetching government bid application history:', error);
-                historyElement.innerHTML = '<div class="text-center text-danger"><p>Error loading government bid application history. Please try again.</p></div>';
-            }
-        }
-
-        // Generate application
-        async function generateApplication(opportunityId) {
-            // Reuse the same function from index.html
-            // This would typically be in a shared JS file
-            alert('Generating application for opportunity: ' + opportunityId);
-            // Implementation would be similar to the main page
-        }
-
-        // Email application
-        async function emailApplication(opportunityId) {
-            // Reuse the same function from index.html
-            alert('Emailing application for opportunity: ' + opportunityId);
-            // Implementation would be similar to the main page
-        }
-
-        // Document modal functions
-        function openDocumentsModal() {
-            const modal = new bootstrap.Modal(document.getElementById('documentsModal'));
-            modal.show();
-            // Load documents list
-        }
-
-        // Applications modal functions
-        function openApplicationsModal() {
-            const modal = new bootstrap.Modal(document.getElementById('applicationsModal'));
-            modal.show();
-            // Load applications list
-        }
-
-        // Initialize page
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load government bid opportunities and history on page load
-            searchGovBidOpportunities();
-            loadGovBidApplicationHistory();
-        });
+        // Keep existing JS functionality; ensure it targets IDs used above
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
