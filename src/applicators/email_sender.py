@@ -76,7 +76,13 @@ class EmailSender:
         from_address = from_addr or (self.default_from or self.username)
         if not from_address:
             return {"status": "error", "message": "No sender address configured. Set SMTP_FROM or SMTP_USERNAME."}
-        to_addrs = to or ([self.default_to] if self.default_to else [from_address])
+        # Determine recipients based on strict mode
+        if to and len(to) > 0:
+            to_addrs = to
+        elif settings.email_strict_mode:
+            return {"status": "error", "message": "No recipient found and EMAIL_STRICT_MODE is enabled."}
+        else:
+            to_addrs = ([self.default_to] if self.default_to else [from_address])
         bcc_addrs = bcc or ([self.default_bcc] if self.default_bcc else [])
 
         attachments = attachments or []
@@ -332,10 +338,17 @@ class EmailSender:
         if not recipients:
             try:
                 recipients = self._derive_recipients(meta, app_folder)
-                if not recipients and self.default_to:
-                    recipients = [self.default_to]
             except Exception as e:
                 logger.warning(f"Failed to derive recipients automatically: {e}")
-                recipients = [self.default_to] if self.default_to else None
+                recipients = None
+        # If still no recipients, apply strict mode policy
+        if not recipients:
+            if settings.email_strict_mode:
+                return {"status": "error", "message": "No recipient found; EMAIL_STRICT_MODE prevents fallback sending."}
+            # Non-strict: fallback to default_to or from
+            if self.default_to:
+                recipients = [self.default_to]
+            else:
+                recipients = [self.default_from or self.username]
 
         return self.send_email(subject=subject, body=plain_text, body_html=html, to=recipients, attachments=attachments)

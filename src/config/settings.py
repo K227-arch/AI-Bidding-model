@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     smtp_to: Optional[str] = Field(None, env="SMTP_TO")
     smtp_bcc: Optional[str] = Field(None, env="SMTP_BCC")
     
+    # Email strict mode: when true, do not send unless explicit or discovered recipients exist
+    email_strict_mode: bool = Field(False, env="EMAIL_STRICT_MODE")
+    
     # Bid Search Keywords
     it_keywords: List[str] = [
         "information technology", "IT services", "software development",
