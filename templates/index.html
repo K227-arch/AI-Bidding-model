@@ -42,6 +42,10 @@
             display: block;
         }
         .status-card.clickable { cursor: pointer; }
+        /* Toggle indicator styles */
+        .details-toggle .chevron { transition: transform 0.2s ease; }
+        .details-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+        .opportunity-card.expanded .card-body { background-color: rgba(0,0,0,0.02); }
     </style>
 </head>
 <body class="bg-light">
@@ -103,12 +107,8 @@
                             <button type="submit" class="btn btn-primary w-100">
                                 <i class="fas fa-upload me-2"></i>Upload
                             </button>
+                            <div class="form-text mt-2">Documents are processed automatically after upload.</div>
                         </form>
-                        <div class="mt-3">
-                            <button class="btn btn-success w-100" onclick="processDocuments()">
-                                <i class="fas fa-cogs me-2"></i>Process Documents
-                            </button>
-                        </div>
                     </div>
                 </div>
 
@@ -118,6 +118,11 @@
                         <h5><i class="fas fa-search me-2"></i>Search Opportunities</h5>
                     </div>
                     <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Keywords</label>
+                            <input type="text" class="form-control" id="search-keywords" placeholder="e.g., software engineer, RFP, remote">
+                            <div class="form-text">Search across jobs, government bids, and remote roles</div>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label">Days Back</label>
                             <input type="number" class="form-control" id="days-back" value="7" min="1" max="30">
@@ -249,23 +254,43 @@
                 return;
             }
             const html = opportunities.map(opp => {
+                const collapseId = `opp-details-${slugify(opp.opportunity_id || opp.title || Math.random().toString(36).slice(2))}`;
                 return `
                     <div class="card opportunity-card mb-3 ${opp.is_remote ? 'border-success' : ''}" data-opp-id="${opp.opportunity_id}">
                         <div class="card-body">
-                            <h5 class="card-title">${opp.title}</h5>
-                            <h6 class="card-subtitle mb-2 text-muted">${opp.agency}</h6>
-                            <p class="card-text">
-                                ${opp.due_date ? `<small class=\"text-muted\"><i class=\"fas fa-calendar-alt me-1\"></i>${new Date(opp.due_date).toLocaleDateString()}</small>` : ''}
-                            </p>
-                            <div class="d-flex justify-content-between opp-actions">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h5 class="card-title mb-1">${opp.title || 'Untitled'}</h5>
+                                    <h6 class="card-subtitle mb-2 text-muted">${opp.agency || opp.company || 'Unknown'}</h6>
+                                    <p class="card-text mb-2">
+                                        ${opp.due_date ? '<small class="text-muted"><i class="fas fa-calendar-alt me-1"></i>' + new Date(opp.due_date).toLocaleDateString() + '</small>' : ''}
+                                    </p>
+                                </div>
+                                <button class="btn btn-sm btn-link text-decoration-none details-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}" data-opp-toggle="true">
+                                    <span class="me-1">Details</span>
+                                    <i class="fas fa-chevron-down chevron" style="transition: transform 0.2s ease;"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-between opp-actions mt-1">
                                 <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">Generate Application</button>
-                                ${opp.url ? `<a href="${opp.url}" target="_blank" class="btn btn-sm btn-outline-secondary">View Details</a>` : ''}
+                                ${opp.url ? '<a href="' + opp.url + '" target="_blank" class="btn btn-sm btn-outline-secondary">View Details</a>' : ''}
+                            </div>
+                            <div id="${collapseId}" class="collapse mt-3">
+                                <div class="p-2 border rounded bg-light">
+                                    ${opp.description ? '<div class="mb-2">' + opp.description + '</div>' : '<div class="mb-2 text-muted">No description available.</div>'}
+                                    <div class="small text-muted">
+                                        ${opp.location ? '<div><i class="fas fa-map-marker-alt me-1"></i>' + opp.location + '</div>' : ''}
+                                        ${opp.type ? '<div><i class="fas fa-tag me-1"></i>' + opp.type + '</div>' : ''}
+                                        ${opp.source ? '<div><i class="fas fa-globe me-1"></i>' + opp.source + '</div>' : ''}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 `;
             }).join('');
             container.innerHTML = html;
+            initOpportunityToggles();
         }
 
         async function fetchApplicationHistory() {
@@ -300,7 +325,7 @@
                             <a class="btn btn-sm btn-outline-primary" target="_blank" href="${combinedUrl}">
                                 <i class="fas fa-file-alt me-1"></i>Open
                             </a>
-                            ${externalUrl ? `<a class="btn btn-sm btn-outline-secondary" target="_blank" href="${externalUrl}"><i class="fas fa-external-link-alt me-1"></i>View on site</a>` : ''}
+                            ${externalUrl ? '<a class="btn btn-sm btn-outline-secondary" target="_blank" href="' + externalUrl + '"><i class="fas fa-external-link-alt me-1"></i>View on site</a>' : ''}
                             <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${item.opportunity_id}')">
                                 <i class="fas fa-paper-plane me-1"></i>Email Package
                             </button>
@@ -341,8 +366,8 @@
                             <span class="badge bg-${statusBadge}">${s.status || 'unknown'}</span>
                         </div>
                         <div class="text-muted small"><i class="fas fa-clock me-1"></i>${dt}</div>
-                        ${s.message ? `<div>${s.message}</div>` : ''}
-                        ${externalUrl ? `<div class=\"mt-2\"><a class=\"btn btn-sm btn-outline-secondary\" target=\"_blank\" href=\"${externalUrl}\"><i class=\"fas fa-external-link-alt me-1\"></i>View posting</a></div>` : ''}
+                        ${s.message ? '<div>' + s.message + '</div>' : ''}
+                        ${externalUrl ? '<div class="mt-2"><a class="btn btn-sm btn-outline-secondary" target="_blank" href="' + externalUrl + '"><i class="fas fa-external-link-alt me-1"></i>View posting</a></div>' : ''}
                     </div>
                 `;
             }).join('');
@@ -501,7 +526,7 @@
     <a class="btn btn-sm btn-outline-primary" target="_blank" href="${combinedUrl}">
       <i class="fas fa-file-alt me-1"></i>Open
     </a>
-    ${externalUrl ? `<a class="btn btn-sm btn-outline-secondary" target="_blank" href="${externalUrl}"><i class="fas fa-external-link-alt me-1"></i>View on site</a>` : ''}
+    ${externalUrl ? '<a class="btn btn-sm btn-outline-secondary" target="_blank" href="' + externalUrl + '"><i class="fas fa-external-link-alt me-1"></i>View on site</a>' : ''}
     <button class="btn btn-sm btn-outline-success" onclick="emailApplication('${item.opportunity_id}')">
       <i class="fas fa-paper-plane me-1"></i>Email
     </button>
@@ -528,8 +553,8 @@
     <span class="badge bg-${statusBadge}">${s.status || 'unknown'}</span>
   </div>
   <div class="text-muted"><i class="fas fa-clock me-1"></i>${dt}</div>
-  ${s.message ? `<div>${s.message}</div>` : ''}
-  ${externalUrl ? `<div class=\"mt-2\"><a class=\"btn btn-sm btn-outline-secondary\" target=\"_blank\" href=\"${externalUrl}\"><i class=\"fas fa-external-link-alt me-1\"></i>View posting</a></div>` : ''}
+  ${s.message ? '<div>' + s.message + '</div>' : ''}
+  ${externalUrl ? '<div class="mt-2"><a class="btn btn-sm btn-outline-secondary" target="_blank" href="' + externalUrl + '"><i class="fas fa-external-link-alt me-1"></i>View posting</a></div>' : ''}
 </div>`;
                     }).join('');
                 }
@@ -564,7 +589,13 @@ async function handleFileUpload(event) {
         if (!response.ok || result.status === 'error') {
             throw new Error(result.message || `HTTP ${response.status}`);
         }
-        showToast(result.message || 'Upload successful', 'success');
+        let toastMsg = result.message || 'Upload successful';
+        if (result.auto_processed) {
+            const p = result.processing || {};
+            const detail = p.message ? ` ${p.message}` : '';
+            toastMsg = (toastMsg + detail).trim();
+        }
+        showToast(toastMsg, result.status === 'warning' ? 'warning' : 'success');
         if (fileInput) fileInput.value = '';
         updateDocumentsCount();
         updateStatus();
@@ -576,25 +607,10 @@ async function handleFileUpload(event) {
     }
 }
 
-async function processDocuments() {
-    showLoading('Processing documents...');
-    try {
-        const res = await fetch('/api/documents/process', { method: 'POST' });
-        const result = await res.json();
-        if (result.status === 'success') {
-            showToast(result.message || 'Processing complete', 'success');
-        } else {
-            showToast(result.message || 'Processing failed', result.status === 'error' ? 'error' : 'warning');
-        }
-    } catch (e) {
-        showToast('Processing failed: ' + e.message, 'error');
-    } finally {
-        hideLoading();
-        updateStatus();
-    }
-}
+// processDocuments removed: documents are auto-processed immediately after upload
 
 async function searchOpportunities() {
+    const keywords = document.getElementById('search-keywords')?.value?.trim() || null;
     const daysBack = document.getElementById('days-back')?.value || 7;
     const maxOpportunities = document.getElementById('max-opportunities')?.value || 50;
     const quickSearch = !!document.getElementById('quick-search')?.checked;
@@ -609,7 +625,8 @@ async function searchOpportunities() {
                 days_back: parseInt(daysBack),
                 max_opportunities: parseInt(maxOpportunities),
                 quick_search: Boolean(quickSearch),
-                run_parallel: Boolean(runParallel)
+                run_parallel: Boolean(runParallel),
+                keywords: keywords
             })
         });
         const result = await res.json();
@@ -647,6 +664,34 @@ async function refreshOpportunities() {
     }
 }
 
+// Helper: make safe IDs
+function slugify(str) {
+    return String(str || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+}
+
+// Initialize collapse toggles: rotate chevron, update text, and highlight expanded card
+function initOpportunityToggles() {
+    const toggles = document.querySelectorAll('[data-opp-toggle="true"]');
+    toggles.forEach(btn => {
+        const targetSel = btn.getAttribute('data-bs-target');
+        const collapseEl = document.querySelector(targetSel);
+        if (!collapseEl) return;
+        const card = btn.closest('.opportunity-card');
+        const labelSpan = btn.querySelector('span');
+        collapseEl.addEventListener('show.bs.collapse', () => {
+            if (card) card.classList.add('expanded');
+            if (labelSpan) labelSpan.textContent = 'Hide';
+        });
+        collapseEl.addEventListener('hide.bs.collapse', () => {
+            if (card) card.classList.remove('expanded');
+            if (labelSpan) labelSpan.textContent = 'Details';
+        });
+    });
+}
+
 function filterOpportunities(type) {
     const allBtn = document.getElementById('btn-all-opportunities');
     const jobBtn = document.getElementById('btn-job-opportunities');
@@ -676,22 +721,45 @@ function filterOpportunities(type) {
         return;
     }
 
-    const html = filtered.map(opp => `
-        <div class="card opportunity-card mb-3 ${opp.is_remote ? 'border-success' : ''}" data-opp-id="${opp.opportunity_id}">
-            <div class="card-body">
-                <h5 class="card-title">${opp.title || 'Untitled'}</h5>
-                <h6 class="card-subtitle mb-2 text-muted">${opp.agency || opp.company || 'Unknown'}</h6>
-                <p class="card-text">
-                    ${opp.due_date ? `<small class=\"text-muted\"><i class=\"fas fa-calendar-alt me-1\"></i>${new Date(opp.due_date).toLocaleDateString()}</small>` : ''}
-                </p>
-                <div class="d-flex justify-content-between opp-actions">
-                    <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">Generate Application</button>
-                    ${opp.url ? `<a href="${opp.url}" target="_blank" class="btn btn-sm btn-outline-secondary">View Details</a>` : ''}
+    const html = filtered.map(opp => {
+        const collapseId = `opp-details-${slugify(opp.opportunity_id || opp.title || Math.random().toString(36).slice(2))}`;
+        return `
+    <div class="card opportunity-card mb-3 ${opp.is_remote ? 'border-success' : ''}" data-opp-id="${opp.opportunity_id}">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h5 class="card-title mb-1">${opp.title || 'Untitled'}</h5>
+                    <h6 class="card-subtitle mb-2 text-muted">${opp.agency || opp.company || 'Unknown'}</h6>
+                    <p class="card-text mb-2">
+                        ${opp.due_date ? '<small class="text-muted"><i class="fas fa-calendar-alt me-1"></i>' + new Date(opp.due_date).toLocaleDateString() + '</small>' : ''}
+                    </p>
+                </div>
+                <button class="btn btn-sm btn-link text-decoration-none details-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}" data-opp-toggle="true">
+                    <span class="me-1">Details</span>
+                    <i class="fas fa-chevron-down chevron"></i>
+                </button>
+            </div>
+            <div class="d-flex justify-content-between opp-actions mt-1">
+                <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">Generate Application</button>
+                ${opp.url ? '<a href="' + opp.url + '" target="_blank" class="btn btn-sm btn-outline-secondary">View Details</a>' : ''}
+            </div>
+            <div id="${collapseId}" class="collapse mt-3">
+                <div class="p-2 border rounded bg-light">
+                    ${opp.description ? '<div class="mb-2">' + opp.description + '</div>' : '<div class="mb-2 text-muted">No description available.</div>'}
+                    <div class="small text-muted">
+                        ${opp.location ? '<div><i class="fas fa-map-marker-alt me-1"></i>' + opp.location + '</div>' : ''}
+                        ${opp.type ? '<div><i class="fas fa-tag me-1"></i>' + opp.type + '</div>' : ''}
+                        ${opp.source ? '<div><i class="fas fa-globe me-1"></i>' + opp.source + '</div>' : ''}
+                    </div>
+                </div>
                 </div>
             </div>
         </div>
-    `).join('');
+    </div>
+    `;
+}).join('');
     container.innerHTML = html;
+    initOpportunityToggles();
 }
 
 async function generateApplication(opportunityId) {
@@ -738,24 +806,113 @@ async function generateApplication(opportunityId) {
 }
 
 async function emailApplication(opportunityId) {
-    showLoading('Sending email...');
+    // Build selection UI similar to job_applications.html
     try {
-        const res = await fetch('/api/applications/email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ opportunity_id: opportunityId })
-        });
-        const result = await res.json();
-        if (result.status === 'success') {
-            showToast('Email sent successfully', 'success');
-        } else {
-            showToast(result.message || 'Failed to send email', 'error');
+        const docsRes = await fetch('/api/documents');
+        const docs = await docsRes.json();
+        const docNames = (docs.documents || []).map(d => d.name);
+
+        const selectionHtml = `
+            <div class="modal fade" id="emailDocsModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="fas fa-paperclip me-2"></i>Select attachments</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-2 small text-muted">WIC documents are preselected by keyword automatically ("wic") unless you choose "Only send selected" below.</div>
+                            <div id="email-docs-list" class="d-flex flex-column gap-1" style="max-height:260px;overflow:auto;"></div>
+                            <div class="mt-2">
+                                <label class="form-label small">Extra keyword filters (comma-separated)</label>
+                                <input id="email-extra-keywords" class="form-control form-control-sm" placeholder="e.g. wic, company profile" value="wic">
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="email-selected-only">
+                                <label class="form-check-label small" for="email-selected-only">
+                                    Only send the files I select (don’t auto-attach suggested docs)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button id="email-send-btn" type="button" class="btn btn-success">Send Email</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        let modalWrapper = document.getElementById('emailDocsModal');
+        if (!modalWrapper) {
+            const div = document.createElement('div');
+            div.innerHTML = selectionHtml;
+            document.body.appendChild(div.firstElementChild);
+            modalWrapper = document.getElementById('emailDocsModal');
         }
+
+        const listEl = modalWrapper.querySelector('#email-docs-list');
+        listEl.innerHTML = (docNames.length ? docNames.map(n => `
+            <label class="form-check small">
+                <input class="form-check-input" type="checkbox" value="${n}">
+                <span class="form-check-label">${n}</span>
+            </label>
+        `).join('') : '<div class="text-muted small">No documents found. Upload from the Documents section.</div>');
+
+        const bsModal = new bootstrap.Modal(modalWrapper);
+        bsModal.show();
+
+        const sendBtn = modalWrapper.querySelector('#email-send-btn');
+        // Avoid stacking multiple handlers
+        sendBtn.onclick = null;
+        sendBtn.onclick = async () => {
+            const checked = Array.from(listEl.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
+            const kwInput = modalWrapper.querySelector('#email-extra-keywords');
+            const extraKeywords = kwInput.value.split(',').map(s => s.trim()).filter(Boolean);
+            const selectedOnly = modalWrapper.querySelector('#email-selected-only').checked;
+
+            bsModal.hide();
+            showLoading('Sending email...');
+            try {
+                const res = await fetch('/api/applications/email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        opportunity_id: opportunityId,
+                        extra_doc_names: checked,
+                        extra_doc_keywords: extraKeywords,
+                        selected_only: selectedOnly
+                    })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('Email sent successfully', 'success');
+                } else {
+                    showToast(result.message || 'Failed to send email', 'error');
+                }
+            } catch (e) {
+                showToast('Email failed: ' + e.message, 'error');
+            } finally {
+                hideLoading();
+                fetchSubmissionHistory();
+            }
+        };
     } catch (e) {
-        showToast('Email failed: ' + e.message, 'error');
-    } finally {
-        hideLoading();
-        fetchSubmissionHistory();
+        // Fallback: if documents fetch fails, try simple send
+        try {
+            const res = await fetch('/api/applications/email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opportunity_id: opportunityId })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                showToast('Email sent successfully', 'success');
+            } else {
+                showToast(result.message || 'Failed to send email', 'error');
+            }
+        } catch (err) {
+            showToast('Email failed: ' + err.message, 'error');
+        }
     }
 }
 

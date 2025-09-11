@@ -1,7 +1,7 @@
 """
 Additional scrapers for international remote jobs and Ugandan jobs.
 """
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from loguru import logger
 
@@ -188,82 +188,181 @@ class UgandaSampleScraper(BaseScraper):
 
 class EGPUgandaScraper(BaseScraper):
     """Scraper for Uganda's e-GP bid notices (https://egpuganda.go.ug/bid-notices).
-    Parses the listing page and extracts recent notices, filtering by keywords.
+    Parses the listing page and extracts recent notices, following detail pages to capture
+    reference numbers, deadlines, and requirements.
     """
     def __init__(self):
         super().__init__("EGP Uganda (Bid Notices)")
         self.base_url = "https://egpuganda.go.ug"
         self.listing_url = "https://egpuganda.go.ug/bid-notices"
+        # Allow callers to tweak pagination depth if needed
+        self.pages_to_fetch = 5
+
+    def _clean(self, text: Optional[str]) -> str:
+        return " ".join((text or "").split())
+
+    def _parse_date(self, text: str) -> Optional[datetime]:
+        if not text:
+            return None
+        text = text.strip()
+        fmts = [
+            "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d",
+            "%d %b %Y", "%d %B %Y", "%Y.%m.%d"
+        ]
+        for fmt in fmts:
+            try:
+                return datetime.strptime(text, fmt)
+            except Exception:
+                continue
+        # try to extract first date token
+        m = re.search(r"\d{4}-\d{2}-\d{2}", text)
+        if m:
+            try:
+                return datetime.strptime(m.group(0), "%Y-%m-%d")
+            except Exception:
+                pass
+        return None
+
+    def _parse_details(self, url: str) -> Dict[str, Any]:
+        details = {"reference": None, "subject": None, "deadline": None, "agency": None, "requirements": None}
+        resp = self._make_request(url)
+        if not resp:
+            return details
+        try:
+            soup = BeautifulSoup(resp.content, "html.parser")
+            full_text = self._clean(soup.get_text("\n", strip=True))
+            # Reference number
+            ref_labels = [
+                r"Procurement Reference Number", r"Reference Number", r"Procurement Reference No", r"Procurement Reference"
+            ]
+            for lbl in ref_labels:
+                m = re.search(lbl + r"\s*[:\-]?\s*([A-Z0-9\-\/_\.]+)", full_text, re.IGNORECASE)
+                if m:
+                    details["reference"] = self._clean(m.group(1))
+                    break
+            # Subject of Procurement
+            subj_labels = [r"Subject of Procurement", r"Subject"]
+            for lbl in subj_labels:
+                m = re.search(lbl + r"\s*[:\-]?\s*([^\n]+)", full_text, re.IGNORECASE)
+                if m:
+                    details["subject"] = self._clean(m.group(1))
+                    break
+            # Deadline
+            dead_labels = [r"Submission Deadline", r"Bid Submission Deadline", r"Deadline"]
+            for lbl in dead_labels:
+                m = re.search(lbl + r"\s*[:\-]?\s*([^\n]+)", full_text, re.IGNORECASE)
+                if m:
+                    parsed = self._parse_date(m.group(1))
+                    if parsed:
+                        details["deadline"] = parsed
+                        break
+            # Agency / Procuring Entity
+            agency_labels = [r"Procuring Entity", r"Entity", r"Procuring and Disposing Entity"]
+            for lbl in agency_labels:
+                m = re.search(lbl + r"\s*[:\-]?\s*([^\n]+)", full_text, re.IGNORECASE)
+                if m:
+                    details["agency"] = self._clean(m.group(1))
+                    break
+            # Requirements or particulars
+            req_section = None
+            for head_text in ["Requirements", "Particulars of Procurement", "Scope of Work", "Specifications"]:
+                node = soup.find(lambda tag: tag.name in ["h1","h2","h3","h4","h5","h6","strong"] and head_text.lower() in tag.get_text(" ", strip=True).lower())
+                if node:
+                    # collect sibling text until next heading
+                    parts = []
+                    for sib in node.next_siblings:
+                        if getattr(sib, 'name', None) in ["h1","h2","h3","h4","h5","h6","strong"]:
+                            break
+                        parts.append(self._clean(getattr(sib, 'get_text', lambda *a, **k: str(sib))(" ", strip=True)))
+                    req_section = self._clean(" ".join([p for p in parts if p]))
+                    if req_section:
+                        break
+            if not req_section:
+                # fallback: take main content block
+                main = soup.find("main") or soup.find("article") or soup.find("body")
+                if main:
+                    text = self._clean(main.get_text(" ", strip=True))
+                    req_section = text[:2000]
+            details["requirements"] = req_section
+        except Exception as e:
+            logger.debug(f"Failed to parse EGP details {url}: {e}")
+        return details
 
     def search_opportunities(self, keywords: List[str], days_back: int = 7) -> List[BidOpportunity]:
         opportunities: List[BidOpportunity] = []
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days_back)
 
-        resp = self._make_request(self.listing_url)
-        if not resp:
-            return []
-        try:
-            soup = BeautifulSoup(resp.content, "html.parser")
-            links = []
-            # Collect candidate links
-            for a in soup.find_all("a", href=True):
-                href = a["href"].strip()
-                text = (a.get_text(strip=True) or "")
-                if not href:
+        seen_detail_urls = set()
+        # Attempt simple pagination by page parameter (best-effort)
+        pages = max(1, int(getattr(self, 'pages_to_fetch', 5) or 5))
+        for page in range(1, pages + 1):
+            try:
+                resp = self._make_request(self.listing_url, params={"page": page})
+                if not resp:
                     continue
-                # Consider links that point to bid-notices detail pages
-                if "/bid-notices" in href or "/notice" in href or href.startswith("/bid/"):
-                    links.append((a, href, text))
-            seen_urls = set()
-            for a, href, text in links:
-                url = urljoin(self.base_url, href)
-                if url in seen_urls:
-                    continue
-                seen_urls.add(url)
+                soup = BeautifulSoup(resp.content, "html.parser")
+                # Find rows that contain a "View details" link
+                for a in soup.find_all("a", href=True):
+                    if "view details" in (a.get_text(strip=True) or "").lower():
+                        details_href = a["href"].strip()
+                        details_url = urljoin(self.base_url, details_href)
+                        if details_url in seen_detail_urls:
+                            continue
+                        seen_detail_urls.add(details_url)
+                        # Try to find the row context for listing-level fields
+                        row_text = self._clean(a.find_parent("tr").get_text(" ", strip=True)) if a.find_parent("tr") else self._clean(a.find_parent().get_text(" ", strip=True))
+                        # Extract quick hints from row
+                        ref_match = re.search(r"([A-Z0-9\-]+\/[A-Z]+\/\d{4}-\d{4}\/\d+)", row_text)
+                        ref_quick = ref_match.group(1) if ref_match else None
+                        agency_quick = None
+                        # Try to capture an agency-like fragment (between ref and type)
+                        if ref_quick:
+                            after = row_text.split(ref_quick, 1)[-1]
+                            # common pattern shows agency next
+                            m_ag = re.search(r"([A-Za-z][A-Za-z&\s]+Authority|Ministry of [A-Za-z\s&]+|District Local Government|University|Municipal Council|Authority)", after)
+                            if m_ag:
+                                agency_quick = self._clean(m_ag.group(1))
+                        # Published and Deadline dates in listing
+                        published = None
+                        deadline = None
+                        dts = re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", row_text)
+                        if len(dts) >= 1:
+                            published = self._parse_date(dts[0])
+                        if len(dts) >= 2:
+                            deadline = self._parse_date(dts[1])
+                        # Fetch detailed page for authoritative fields
+                        det = self._parse_details(details_url)
+                        reference = det.get("reference") or ref_quick or f"egp-ug-{abs(hash(details_url))}"
+                        title = det.get("subject") or (row_text[:140] if row_text else "Bid Notice")
+                        agency = det.get("agency") or agency_quick or "EGP Uganda"
+                        due_date = det.get("deadline") or deadline or (published + timedelta(days=21) if published else end_date + timedelta(days=21))
+                        description = det.get("requirements") or title
 
-                # Try to infer a date from nearby text
-                context = " ".join(
-                    [text]
-                    + [s.get_text(" ", strip=True) for s in a.parent.find_all(recursive=False)[:5]]
-                ) if a and a.parent else text
-                date_found = None
-                for m in re.findall(r"(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})", context):
-                    try:
-                        if "/" in m:
-                            parts = m.split("/")
-                            day_first = True if int(parts[0]) > 12 else False
-                            date_found = datetime.strptime(m, "%d/%m/%Y" if day_first else "%m/%d/%Y")
-                        else:
-                            date_found = datetime.strptime(m, "%Y-%m-%d")
-                        break
-                    except Exception:
-                        continue
-                published_at = date_found or end_date
-                if published_at < start_date:
-                    continue
+                        # Skip too-old items if published date is available and days_back is applied
+                        if published and published < start_date:
+                            continue
 
-                title = text or "Bid Notice"
-                description = context[:500] if context else title
-                opp = BidOpportunity(
-                    title=title,
-                    description=description,
-                    agency="EGP Uganda",
-                    opportunity_id=f"egp-ug-{abs(hash(url))}",
-                    due_date=published_at + timedelta(days=21),
-                    estimated_value=None,
-                    naics_codes=[],
-                    url=url,
-                    source="EGP Uganda"
-                )
-                opportunities.append(opp)
-        except Exception as e:
-            logger.warning(f"Failed to parse EGP Uganda listing: {e}")
-            return []
+                        opportunities.append(BidOpportunity(
+                            title=title,
+                            description=description,
+                            agency=agency,
+                            opportunity_id=reference,
+                            due_date=due_date,
+                            estimated_value=None,
+                            naics_codes=[],
+                            url=details_url,
+                            source="EGP Uganda"
+                        ))
+            except Exception as e:
+                logger.warning(f"EGP listing parse issue on page {page}: {e}")
+                continue
 
-        # Filter for relevance
-        used_keywords = keywords[:10] if len(keywords) > 10 else keywords
-        return self.filter_relevant_opportunities(opportunities, used_keywords)
+        # If keywords provided, filter; otherwise return all collected
+        if keywords:
+            used_keywords = keywords[:10]
+            return self.filter_relevant_opportunities(opportunities, used_keywords)
+        return opportunities
 
     def get_opportunity_details(self, opportunity_id: str) -> Optional[BidOpportunity]:
         return None

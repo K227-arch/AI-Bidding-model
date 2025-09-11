@@ -99,10 +99,21 @@
                 <!-- Job Opportunities List -->
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-list me-2"></i>Job Opportunities</h5>
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshJobOpportunities()">
-                            <i class="fas fa-sync-alt"></i>
-                        </button>
+                        <h5><i class="fas fa-list me-2"></i>Job Opportunities <span id="job-opportunities-count" class="text-muted small ms-2"></span></h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="input-group input-group-sm" style="width:auto">
+                                <span class="input-group-text">Sort</span>
+                                <select id="job-sort" class="form-select form-select-sm" onchange="setJobSort(this.value)">
+                                    <option value="due_date_asc" selected>Due soon</option>
+                                    <option value="title_asc">Title A–Z</option>
+                                    <option value="agency_asc">Company/Agency A–Z</option>
+                                    <option value="source_asc">Source A–Z</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="refreshJobOpportunities()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div id="job-opportunities-list" class="mt-3" role="status" aria-live="polite"></div>
@@ -191,6 +202,7 @@
         // Display job opportunities
         function displayJobOpportunities(opportunities) {
             const container = document.getElementById('job-opportunities-list');
+            const countEl = document.getElementById('job-opportunities-count');
             if (!container) return;
             if (!opportunities || opportunities.length === 0) {
               container.innerHTML = `
@@ -198,30 +210,35 @@
                   <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
                   <p>No job opportunities found yet. Use the search controls above.</p>
                 </div>`;
-            } else {
-              container.innerHTML = opportunities.map(opp => {
-                const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
-                const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
-                return `
-                  <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
-                    <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
-                      <div class="me-3">
-                        <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
-                        <div class="text-muted small mb-2">
-                          <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
-                          ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
-                        </div>
-                      </div>
-                      <div class="mt-3 mt-md-0 d-flex gap-2">
-                        <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
-                          <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
-                        </button>
-                        ${opp.url ? `<a class=\"btn btn-sm btn-outline-secondary\" href=\"${opp.url}\" target=\"_blank\" rel=\"noopener\"><i class=\"fas fa-external-link-alt me-1\" aria-hidden=\"true\"></i>Details</a>` : ''}
-                      </div>
-                    </div>
-                  </div>`;
-              }).join('');
+              if (countEl) countEl.textContent = '0 results';
+              return;
             }
+            const sorted = sortJobs(opportunities);
+            if (countEl) countEl.textContent = `${sorted.length} results`;
+            container.innerHTML = sorted.map(opp => {
+              const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+              const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+              const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+              return `
+                <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+                  <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+                    <div class="me-3">
+                      <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+                      <div class="text-muted small mb-2">
+                        <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                        ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+                      </div>
+                      ${dueHtml}
+                    </div>
+                    <div class="mt-3 mt-md-0 d-flex gap-2">
+                      <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                         <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+                       </button>
+                       ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+                    </div>
+                  </div>
+                </div>`;
+            }).join('');
         }
         
         // Load job opportunities (filtered for job listings only)
@@ -459,3 +476,653 @@ async function deleteApplication(folder, btn) {
     }
 }
 </script>
+
+<script>
+// Generate application (Bid / Apply)
+async function generateApplication(opportunityId) {
+    try { if (typeof showLoading === 'function') showLoading('Generating application...'); } catch (_) {}
+    try {
+        const response = await fetch('/api/applications/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ opportunity_id: opportunityId, background: false })
+        });
+        const result = await response.json();
+        if (result.status === 'success') {
+            try { if (typeof hideLoading === 'function') hideLoading(); } catch (_) {}
+            try { if (typeof showToast === 'function') showToast(result.message || 'Application generated', 'success'); } catch (_) { alert(result.message || 'Application generated'); }
+            // Refresh history without blocking UI
+            setTimeout(() => { try { loadJobApplicationHistory(); } catch (_) {} }, 0);
+        } else {
+            try { if (typeof hideLoading === 'function') hideLoading(); } catch (_) {}
+            try { if (typeof showToast === 'function') showToast(result.message || 'Generation failed', 'error'); } catch (_) { alert(result.message || 'Generation failed'); }
+        }
+    } catch (e) {
+        try { if (typeof hideLoading === 'function') hideLoading(); } catch (_) {}
+        try { if (typeof showToast === 'function') showToast('Generation failed: ' + e.message, 'error'); } catch (_) { alert('Generation failed: ' + e.message); }
+    }
+}
+</script>
+
+let jobCurrentSort = 'due_date_asc';
+function setJobSort(v){ jobCurrentSort = v; refreshJobOpportunities(); }
+function jobDaysLeft(dateStr){ try{ const d=new Date(dateStr); const now=new Date(); return Math.ceil((d-now)/(1000*60*60*24)); }catch(_){ return null; } }
+function jobDueBadge(dateStr){ const d=jobDaysLeft(dateStr); if(d===null||isNaN(d)) return ''; if(d<0) return '<span class="badge bg-danger ms-2">Expired</span>'; if(d<=3) return `<span class=\"badge bg-danger ms-2\">${d}d</span>`; if(d<=7) return `<span class=\"badge bg-warning text-dark ms-2\">${d}d</span>`; return `<span class=\"badge bg-secondary ms-2\">${d}d</span>`; }
+function sortJobs(list){ const key=jobCurrentSort||'due_date_asc'; const byText=(a,b,p)=>((a[p]||'').toString().localeCompare((b[p]||'').toString(),undefined,{sensitivity:'base'})); const byDate=(a,b)=>{ const da=a.due_date?new Date(a.due_date).getTime():Infinity; const db=b.due_date?new Date(b.due_date).getTime():Infinity; return da-db; }; const arr=list.slice(); if(key==='title_asc') return arr.sort((a,b)=>byText(a,b,'title')); if(key==='agency_asc') return arr.sort((a,b)=>byText(a,b,'agency')); if(key==='source_asc') return arr.sort((a,b)=>byText(a,b,'source')); return arr.sort(byDate); }
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge = '<span class="badge bg-info text-dark ms-2">Job</span>';
+      const remoteBadge = opp.is_remote ? '<span class="badge bg-success ms-2">Remote</span>' : '';
+      const dueHtml = opp.due_date ? `<div class=\"text-muted small\"><i class=\"fas fa-calendar-alt me-1\" aria-hidden=\"true\"></i>Expires: ${new Date(opp.due_date).toLocaleDateString()} ${jobDueBadge(opp.due_date)}</div>` : '';
+      return `
+        <div class="card mb-3 opportunity-card ${opp.is_remote ? 'border-success' : ''}">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div class="me-3">
+              <h5 class="card-title mb-1">${opp.title || 'Untitled'} ${typeBadge} ${remoteBadge}</h5>
+              <div class="text-muted small mb-2">
+                <i class="fas fa-building me-1" aria-hidden="true"></i>${opp.company || opp.agency || 'Unknown'}
+                ${opp.location ? `<span class=\"mx-2\">•</span><i class=\"fas fa-map-marker-alt me-1\" aria-hidden=\"true\"></i>${opp.location}` : ''}
+              </div>
+              ${dueHtml}
+            </div>
+            <div class="mt-3 mt-md-0 d-flex gap-2">
+              <button class="btn btn-sm btn-primary" onclick="generateApplication('${opp.opportunity_id}')">
+                 <i class="fas fa-file-contract me-1" aria-hidden="true"></i>Generate Application
+               </button>
+               ${opp.url ? `<a class="btn btn-sm btn-outline-secondary" href="${opp.url}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1" aria-hidden="true"></i>Details</a>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+function displayJobOpportunities(opportunities) {
+    const container = document.getElementById('job-opportunities-list');
+    const countEl = document.getElementById('job-opportunities-count');
+    if (!container) return;
+    if (!opportunities || opportunities.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted" role="status" aria-live="polite">
+          <i class="fas fa-search fa-3x mb-3" aria-hidden="true"></i>
+          <p>No job opportunities found yet. Use the search controls above.</p>
+        </div>`;
+      if (countEl) countEl.textContent = '0 results';
+      return;
+    }
+    const sorted = sortJobs(opportunities);
+    if (countEl) countEl.textContent = `${sorted.length} results`;
+    container.innerHTML = sorted.map(opp => {
+      const typeBadge

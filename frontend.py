@@ -20,6 +20,23 @@ from loguru import logger
 from uuid import uuid4
 from typing import Tuple
 import shutil
+from urllib.parse import urlparse
+import time
+
+import asyncio
+from loguru import logger
+from uuid import uuid4
+from typing import Tuple
+import shutil
+from urllib.parse import urlparse
+import time
+
+import asyncio
+from loguru import logger
+from uuid import uuid4
+from typing import Tuple
+import shutil
+from urllib.parse import urlparse
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -87,6 +104,15 @@ class BidSystem:
         
         # Background job store
         self.jobs: Dict[str, Dict[str, Any]] = {}
+        
+        # Caching and indexing (in-memory)
+        self.cache_ttl_secs: int = int(getattr(settings, 'search_cache_ttl_secs', 900))  # 15 minutes default
+        self.max_cache_entries: int = int(getattr(settings, 'search_cache_max_entries', 128))
+        self.scrape_cache: Dict[str, Dict[str, Any]] = {}
+        self.search_cache: Dict[str, Dict[str, Any]] = {}
+        self.opportunities_by_id: Dict[str, Any] = {}
+        self.opportunity_index: Dict[str, set] = {}
+        self.last_indexed_count: int = 0
         
         logger.info("Web Bid Application System initialized")
 
@@ -257,13 +283,56 @@ class BidSystem:
         else:
             return 'Uganda'
 
-    async def search_opportunities(self, days_back: int = 7, max_opportunities: int = 50, quick_search: bool = False, run_parallel: bool = False) -> Dict[str, Any]:
+    def _is_uganda_location(self, opportunity) -> bool:
+        """Heuristically decide if the opportunity is Uganda-based (or pertains to Uganda).
+        This checks text, known sources, and URL TLD.
+        """
+        try:
+            title = (getattr(opportunity, 'title', '') or '').lower()
+            desc = (getattr(opportunity, 'description', '') or '').lower()
+            agency = (getattr(opportunity, 'agency', '') or '').lower()
+            text = f"{title} {desc} {agency}"
+            ug_terms = [
+                'uganda', 'kampala', 'entebbe', 'jinja', 'gulu', 'mbarara', 'mbale', 'arua', 'lira',
+                'soroti', 'fort portal', 'masaka', 'hoima', 'mukono', 'wakiso', 'kabale', 'iganga', 'busia'
+            ]
+            if any(term in text for term in ug_terms):
+                return True
+            # URL TLD check
+            url = getattr(opportunity, 'url', '') or ''
+            try:
+                host = urlparse(url).hostname or ''
+                if host.endswith('.ug'):
+                    return True
+            except Exception:
+                pass
+            # Known Uganda sources
+            source = (getattr(opportunity, 'source', '') or '').lower()
+            if any(key in source for key in ['egpuganda', 'newvisiontenders', 'ugandatenders']):
+                return True
+            return False
+        except Exception:
+            return False
+
+    async def search_opportunities(self, days_back: int = 7, max_opportunities: int = 50, quick_search: bool = False, run_parallel: bool = False, keywords: Optional[str] = None) -> Dict[str, Any]:
         """Search for opportunities."""
         try:
+            start_time = time.perf_counter()
             all_opportunities = []
             
-            # Combine keywords
-            search_keywords = settings.it_keywords + settings.cybersecurity_keywords
+            # Build search keywords from user input if provided; else defaults from settings
+            if keywords:
+                raw_tokens = re.split(r"[\s,]+", keywords)
+                search_keywords = []
+                for kw in raw_tokens:
+                    k = (kw or '').strip()
+                    if k and k not in search_keywords:
+                        search_keywords.append(k)
+                if not search_keywords:
+                    search_keywords = settings.it_keywords + settings.cybersecurity_keywords
+            else:
+                # Combine defaults
+                search_keywords = settings.it_keywords + settings.cybersecurity_keywords
             
             # Quick search: limit the number of keywords to speed up network calls
             if quick_search:
@@ -271,28 +340,60 @@ class BidSystem:
                 search_keywords = search_keywords[:MAX_QS_KEYWORDS]
                 logger.info(f"Quick search enabled: limiting keywords to {len(search_keywords)}")
             
+            # Try search-level cache first
+            try:
+                search_cache_key = self._get_search_cache_key(days_back, max_opportunities, quick_search, run_parallel, search_keywords)
+                cached_entry = self._search_cache_get(search_cache_key)
+                if cached_entry and cached_entry.get('opps'):
+                    self.current_opportunities = cached_entry['opps'][:max_opportunities]
+                    elapsed_ms = (time.perf_counter() - start_time) * 1000
+                    logger.info(f"Search cache hit: returned {len(self.current_opportunities)} opportunities in {elapsed_ms:.1f} ms")
+                    return {
+                        'status': 'success',
+                        'message': f"Found {len(self.current_opportunities)} unique IT/ICT opportunities in Uganda (cache)",
+                        'opportunities_found': len(self.current_opportunities),
+                        'cached': True
+                    }
+            except Exception:
+                pass
+            
             if run_parallel:
                 logger.info("Running scrapers in parallel")
-                tasks = [
-                    asyncio.to_thread(scraper.search_opportunities, search_keywords, days_back)
-                    for scraper in self.scrapers
-                ]
+                to_run = []
+                # Pull from per-scraper cache where possible
+                for scraper in self.scrapers:
+                    key = self._get_scrape_cache_key(getattr(scraper, 'name', scraper.__class__.__name__), days_back, search_keywords)
+                    cached = self._scrape_cache_get(key)
+                    if cached is not None:
+                        all_opportunities.extend(cached)
+                        logger.debug(f"Scraper cache hit: {getattr(scraper, 'name', scraper.__class__.__name__)} -> {len(cached)} items")
+                    else:
+                        to_run.append((scraper, key))
+                tasks = [asyncio.to_thread(scraper.search_opportunities, search_keywords, days_back) for scraper, _ in to_run]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                for scraper, result in zip(self.scrapers, results):
+                for (scraper, key), result in zip(to_run, results):
                     if isinstance(result, Exception):
-                        logger.error(f"Scraper {scraper.name} failed: {result}")
+                        logger.error(f"Scraper {getattr(scraper, 'name', scraper.__class__.__name__)} failed: {result}")
                     else:
                         all_opportunities.extend(result)
-                        logger.info(f"{scraper.name}: Found {len(result)} opportunities")
+                        self._scrape_cache_put(key, result)
+                        logger.info(f"{getattr(scraper, 'name', scraper.__class__.__name__)}: Found {len(result)} opportunities")
             else:
-                # Sequential execution
+                # Sequential execution with per-scraper cache
                 for scraper in self.scrapers:
                     try:
-                        opportunities = scraper.search_opportunities(search_keywords, days_back)
-                        all_opportunities.extend(opportunities)
-                        logger.info(f"{scraper.name}: Found {len(opportunities)} opportunities")
+                        key = self._get_scrape_cache_key(getattr(scraper, 'name', scraper.__class__.__name__), days_back, search_keywords)
+                        cached = self._scrape_cache_get(key)
+                        if cached is not None:
+                            all_opportunities.extend(cached)
+                            logger.debug(f"Scraper cache hit: {getattr(scraper, 'name', scraper.__class__.__name__)} -> {len(cached)} items")
+                        else:
+                            opportunities = scraper.search_opportunities(search_keywords, days_back)
+                            all_opportunities.extend(opportunities)
+                            self._scrape_cache_put(key, opportunities)
+                            logger.info(f"{getattr(scraper, 'name', scraper.__class__.__name__)}: Found {len(opportunities)} opportunities")
                     except Exception as e:
-                        logger.error(f"Scraper {scraper.name} failed: {e}")
+                        logger.error(f"Scraper {getattr(scraper, 'name', scraper.__class__.__name__)} failed: {e}")
             
             if not all_opportunities:
                 return {
@@ -313,16 +414,34 @@ class BidSystem:
             if after_cnt < before_cnt:
                 logger.info(f"Filtered non-IT/ICT opportunities: {before_cnt - after_cnt} excluded, {after_cnt} remain")
             
-            # Sort by soonest due date, then limit
+            # Enforce Uganda-only
+            ug_before = len(it_only)
+            uganda_only = [o for o in it_only if self._is_uganda_location(o)]
+            if len(uganda_only) < ug_before:
+                logger.info(f"Filtered non-Uganda opportunities: {ug_before - len(uganda_only)} excluded, {len(uganda_only)} remain")
+            
+            # Build index and rank by relevance + urgency
             try:
-                it_only.sort(key=lambda o: (o.due_date is None, o.due_date))
+                self._index_opportunities(uganda_only)
+                ranked = self._rank_opportunities(uganda_only, search_keywords)
+            except Exception:
+                ranked = uganda_only
+            
+            # Limit results
+            self.current_opportunities = ranked[:max_opportunities]
+            
+            # Put into search-level cache
+            try:
+                self._search_cache_put(search_cache_key, self.current_opportunities, meta={'total_unique': len(unique_opportunities)})
             except Exception:
                 pass
-            self.current_opportunities = it_only[:max_opportunities]
+            
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(f"Search completed in {elapsed_ms:.1f} ms | scrapers={len(self.scrapers)}, unique={len(unique_opportunities)}, uganda={len(uganda_only)}, returned={len(self.current_opportunities)}")
             
             return {
                 'status': 'success',
-                'message': f'Found {len(self.current_opportunities)} unique IT/ICT opportunities',
+                'message': f"Found {len(self.current_opportunities)} unique IT/ICT opportunities in Uganda",
                 'opportunities_found': len(self.current_opportunities)
             }
             
@@ -330,7 +449,7 @@ class BidSystem:
             logger.error(f"Opportunity search failed: {e}")
             return {
                 'status': 'error',
-                'message': f'Opportunity search failed: {str(e)}',
+                'message': f"Opportunity search failed: {str(e)}",
                 'opportunities_found': 0
             }
 
@@ -347,7 +466,7 @@ class BidSystem:
             if not self.company_profile:
                 return {
                     'status': 'warning',
-                    'message': 'No company profile available. Please process documents first.',
+                    'message': 'No company profile available. Please upload company documents first.',
                     'opportunities_matched': 0
                 }
             
@@ -607,7 +726,8 @@ class BidSystem:
             opportunity_agency=agency or '',
             extra_doc_keywords=merged_keywords,
             extra_doc_names=extra_doc_names or [],
-            to=to
+            to=to,
+            selected_only=selected_only
         )
         return result
 
@@ -620,9 +740,10 @@ class BidSystem:
                         opportunity_id=opportunity_id,
                         opportunity_title=title or opportunity_id,
                         opportunity_agency=agency or '',
-                        extra_doc_keywords=extra_keywords,
+                        extra_doc_keywords=merged_keywords,
                         extra_doc_names=extra_doc_names or [],
-                        to=to
+                        to=to,
+                        selected_only=selected_only
                     )
             except Exception as _e:
                 logger.error(f"Auto-generate before email failed: {_e}")
@@ -640,7 +761,7 @@ class BidSystem:
             'message': result.get('message'),
             'to': to or ([settings.smtp_to] if settings.smtp_to else [settings.smtp_from or settings.smtp_username]),
             'extra_doc_names': extra_doc_names or [],
-            'extra_doc_keywords': extra_keywords,
+            'extra_doc_keywords': merged_keywords,
         }
         try:
             with open(log_path, 'a', encoding='utf-8') as f:
@@ -691,6 +812,7 @@ class SearchRequest(BaseModel):
     max_opportunities: int = 50
     quick_search: bool = False
     run_parallel: bool = False
+    keywords: Optional[str] = None
 
 class ApplicationRequest(BaseModel):
     opportunity_id: str
@@ -759,7 +881,8 @@ async def search_opportunities(request: SearchRequest):
         days_back=request.days_back,
         max_opportunities=request.max_opportunities,
         quick_search=request.quick_search,
-        run_parallel=request.run_parallel
+        run_parallel=request.run_parallel,
+        keywords=request.keywords
     )
     return JSONResponse(content=result)
 
@@ -793,6 +916,9 @@ async def get_opportunities(days_back: Optional[int] = None,
         current = current[:max(0, int(limit))]
 
     for opp in current:
+        # Enforce Uganda-only at response-time as a safeguard
+        if not bid_system._is_uganda_location(opp):
+            continue
         # Determine opportunity type
         opp_type = 'government' if bid_system._is_government_bid(opp) else 'job'
         
@@ -835,14 +961,20 @@ async def get_job_opportunities(days_back: Optional[int] = None,
     # Filter for job opportunities only
     job_opportunities = []
     for opp in bid_system.current_opportunities:
+        if not bid_system._is_uganda_location(opp):
+            continue
         if bid_system._is_job_application(opp):
+            location = bid_system._get_opportunity_location(opp)
+            is_remote = 'remote' in location.lower()
             job_opportunities.append({
                 'opportunity_id': opp.opportunity_id,
                 'title': opp.title,
                 'agency': opp.agency,
                 'due_date': opp.due_date.isoformat() if opp.due_date else None,
                 'url': opp.url,
-                'source': getattr(opp, 'source', '')
+                'source': getattr(opp, 'source', ''),
+                'location': location,
+                'is_remote': is_remote
             })
     
     # Apply limit if specified
@@ -872,14 +1004,23 @@ async def get_government_opportunities(days_back: Optional[int] = None,
     # Filter for government bid opportunities only
     gov_opportunities = []
     for opp in bid_system.current_opportunities:
+        if not bid_system._is_uganda_location(opp):
+            continue
         if bid_system._is_government_bid(opp):
+            location = bid_system._get_opportunity_location(opp)
+            is_remote = 'remote' in location.lower()
             gov_opportunities.append({
                 'opportunity_id': opp.opportunity_id,
+                'reference_number': opp.opportunity_id,  # expose explicit reference field
                 'title': opp.title,
                 'agency': opp.agency,
                 'due_date': opp.due_date.isoformat() if opp.due_date else None,
                 'url': opp.url,
-                'source': getattr(opp, 'source', '')
+                'source': getattr(opp, 'source', ''),
+                'location': location,
+                'is_remote': is_remote,
+                'description': getattr(opp, 'description', ''),
+                'requirements': getattr(opp, 'description', '')  # alias for clarity
             })
     
     # Apply limit if specified
@@ -1007,14 +1148,18 @@ async def get_job(job_id: str):
 @app.post("/api/applications/email")
 async def email_application(request: EmailApplicationRequest):
     """Send generated application via email (with preconfigured attachments)."""
-    result = await bid_system.email_application(
-        request.opportunity_id,
-        request.to,
-        extra_doc_keywords=request.extra_doc_keywords,
-        extra_doc_names=request.extra_doc_names,
-        selected_only=request.selected_only
-    )
-    return JSONResponse(content=result)
+    try:
+        result = await bid_system.email_application(
+            request.opportunity_id,
+            request.to,
+            extra_doc_keywords=request.extra_doc_keywords,
+            extra_doc_names=request.extra_doc_names,
+            selected_only=request.selected_only
+        )
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"/api/applications/email failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.post("/api/documents/upload")
 async def upload_document(file: List[UploadFile] = File(...)):
@@ -1073,11 +1218,38 @@ async def upload_document(file: List[UploadFile] = File(...)):
         if failed:
             message += f" Failed: {len(failed)} file(s)."
 
+        # Auto-process documents immediately after successful upload(s)
+        auto_processed = False
+        processing_result = None
+        if uploaded:
+            try:
+                processing_result = await bid_system.process_documents()
+                auto_processed = True
+
+                # Blend processing outcome into overall status/message while preserving details
+                proc_status = (processing_result or {}).get('status')
+                proc_message = (processing_result or {}).get('message')
+                if proc_message:
+                    message += f" {proc_message}"
+                if proc_status == 'error':
+                    # Downgrade overall to warning if upload itself was success
+                    status = 'warning' if status == 'success' else status
+                elif proc_status == 'warning':
+                    if status == 'success':
+                        status = 'warning'
+            except Exception as proc_e:
+                logger.error(f"Auto-processing after upload failed: {proc_e}")
+                if status == 'success':
+                    status = 'warning'
+                message += " Auto-processing failed."
+
         return JSONResponse(content={
             'status': status,
             'message': message,
             'uploaded': uploaded,
-            'failed': failed
+            'failed': failed,
+            'auto_processed': auto_processed,
+            'processing': processing_result
         })
 
     except Exception as e:

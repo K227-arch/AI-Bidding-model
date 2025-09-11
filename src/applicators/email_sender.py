@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import smtplib
 import mimetypes
+import ssl
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from email.message import EmailMessage
@@ -25,6 +26,9 @@ class EmailSender:
         self.username = settings.smtp_username
         self.password = settings.smtp_password
         self.use_tls = settings.smtp_use_tls
+        # Fallbacks: our Settings defines smtp_use_tls but not smtp_use_ssl nor smtp_timeout
+        self.use_ssl = False
+        self.timeout = 30
         self.default_from = settings.smtp_from or self.username
         self.default_to = settings.smtp_to
         self.default_bcc = settings.smtp_bcc
@@ -58,15 +62,28 @@ class EmailSender:
         return msg
 
     def _connect(self) -> smtplib.SMTP:
-        server = smtplib.SMTP(self.host, self.port, timeout=30)
+        server: Optional[smtplib.SMTP] = None
+        ctx = ssl.create_default_context()
         try:
-            if self.use_tls:
-                server.starttls()
+            if self.use_ssl:
+                # SMTPS (implicit TLS), typically port 465
+                server = smtplib.SMTP_SSL(self.host, self.port, timeout=self.timeout)
+            else:
+                # Start unencrypted and upgrade with STARTTLS if enabled (typically port 587)
+                server = smtplib.SMTP(self.host, self.port, timeout=self.timeout)
+                server.ehlo()
+                if self.use_tls:
+                    server.starttls(context=ctx)
+                    server.ehlo()
             if self.username and self.password:
                 server.login(self.username, self.password)
             return server
         except Exception:
-            server.quit()
+            try:
+                if server is not None:
+                    server.quit()
+            except Exception:
+                pass
             raise
 
     def send_email(self, subject: str, body: str, to: Optional[List[str]] = None,
@@ -129,112 +146,115 @@ class EmailSender:
         docs_dir = Path(settings.documents_folder)
         if not docs_dir.exists():
             return []
-        matches: List[Path] = []
-        files = [p for p in docs_dir.iterdir() if p.is_file()]
-        for phrase in keywords:
-            tokens = [t for t in phrase.lower().split() if t]
-            for f in files:
-                name = f.name.lower()
-                if all(tok in name for tok in tokens):
-                    matches.append(f)
-        # Deduplicate
-        seen = set()
-        unique: List[Path] = []
-        for p in matches:
-            if p.resolve() not in seen:
-                unique.append(p)
-                seen.add(p.resolve())
-        return unique
+        results: List[Path] = []
+        try:
+            for entry in docs_dir.iterdir():
+                if not entry.is_file():
+                    continue
+                name = entry.name.lower()
+                for phrase in keywords:
+                    tokens = [t for t in re.split(r"[^a-z0-9]+", phrase.lower()) if t]
+                    if tokens and all(t in name for t in tokens):
+                        results.append(entry)
+                        break
+        except Exception as e:
+            logger.warning(f"Error scanning documents by keywords: {e}")
+        return results
 
     def find_documents_by_names(self, names: List[str]) -> List[Path]:
-        """Find documents in settings.documents_folder by exact filename match (case-sensitive)."""
         docs_dir = Path(settings.documents_folder)
         if not docs_dir.exists():
             return []
-        name_set = set(names or [])
         results: List[Path] = []
-        for f in docs_dir.iterdir():
-            if f.is_file() and f.name in name_set:
-                results.append(f)
+        try:
+            normalized = {n.lower().strip() for n in names if isinstance(n, str)}
+            for entry in docs_dir.iterdir():
+                if not entry.is_file():
+                    continue
+                if entry.name.lower() in normalized:
+                    results.append(entry)
+        except Exception as e:
+            logger.warning(f"Error scanning documents by names: {e}")
         return results
 
     def _truncate(self, text: str, limit: int = 700) -> str:
+        text = text or ""
         if len(text) <= limit:
             return text
-        return text[:limit].rsplit(" ", 1)[0] + "…"
+        return text[:limit - 3] + "..."
 
     def _build_html_package_email(self, meta: Dict[str, Any], app_folder: Path, attachments: List[Path]) -> Tuple[str, str]:
-        """Return (plain_text, html) body for the application email."""
-        title = meta.get("opportunity_title") or meta.get("title") or "Bid/Application"
+        def safe(s: Optional[str]) -> str:
+            return (s or "").replace("<", "&lt;").replace(">", "&gt;")
+
+        opp_id = meta.get("opportunity_id") or ""
+        title = meta.get("opportunity_title") or ""
         agency = meta.get("opportunity_agency") or meta.get("agency") or ""
-        opp_id = meta.get("opportunity_id") or meta.get("id") or ""
-        view_url = meta.get("view_url") or meta.get("opportunity_url") or ""
 
-        cover = self._read_section(app_folder, "cover_letter.txt")
-        exec_summ = self._read_section(app_folder, "executive_summary.txt")
-        tech = self._read_section(app_folder, "technical_approach.txt")
-        team = self._read_section(app_folder, "team_qualifications.txt")
-        past = self._read_section(app_folder, "past_performance.txt")
+        def read_section(name: str) -> str:
+            try:
+                p = app_folder / name
+                if p.exists():
+                    return p.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                pass
+            return ""
 
-        # Plain-text fallback
-        lines = [
-            f"Application Package: {title}",
-            (f"Agency: {agency}" if agency else None),
-            (f"Opportunity ID: {opp_id}" if opp_id else None),
-            (f"View Online: {view_url}" if view_url else None),
-            "",
-            "Attached documents:",
-        ]
-        for att in attachments:
-            lines.append(f" - {att.name}")
-        lines.append("")
-        if cover:
-            lines.append("Cover Letter (preview):")
-            lines.append(self._truncate(cover, 600))
-            lines.append("")
-        if exec_summ:
-            lines.append("Executive Summary (preview):")
-            lines.append(self._truncate(exec_summ, 600))
-            lines.append("")
-        plain_text = "\n".join([l for l in lines if l is not None])
+        # Build attachment list
+        attach_list = "\n".join(f"<li>{safe(p.name)}</li>" for p in attachments)
 
-        # HTML body with inline CSS
-        styles = """
-        <style>
-          body { background:#f6f8fb; margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; color:#1f2937; }
-          .container { max-width: 760px; margin: 24px auto; background:#ffffff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); overflow:hidden; }
-          .header { background: linear-gradient(135deg, #2563eb, #1e40af); color:#fff; padding: 20px 24px; }
-          .header h1 { margin:0; font-size: 22px; letter-spacing: 0.2px; }
-          .subtle { opacity: 0.9; font-size: 13px; }
-          .content { padding: 22px 24px; }
-          .meta { display:flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-          .chip { background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; padding:6px 10px; border-radius: 999px; font-size:12px; }
-          .card { border:1px solid #e5e7eb; border-radius:10px; padding:14px; margin: 14px 0; }
-          .card h3 { margin:0 0 8px 0; font-size:15px; color:#111827; }
-          .attachments ul { padding-left: 18px; margin: 8px 0 0 0; }
-          .cta { margin-top: 16px; }
-          .btn { display:inline-block; background:#2563eb; color:#fff !important; text-decoration:none; padding:10px 14px; border-radius:8px; }
-          .footer { color:#6b7280; font-size:12px; padding: 14px 24px 22px; }
-          a { color:#2563eb; }
-          pre { white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; background:#f9fafb; padding:12px; border-radius:8px; border:1px solid #e5e7eb; }
-        </style>
-        """
-        safe = lambda s: (s or "").replace("<", "&lt;").replace(">", "&gt;")
-        attach_list = "".join([f"<li>{safe(a.name)}</li>" for a in attachments])
-        cover_block = f"<div class='card'><h3>Cover Letter (preview)</h3><pre>{safe(self._truncate(cover,700))}</pre></div>" if cover else ""
-        exec_block = f"<div class='card'><h3>Executive Summary (preview)</h3><pre>{safe(self._truncate(exec_summ,700))}</pre></div>" if exec_summ else ""
-        tech_block = f"<div class='card'><h3>Technical Approach (preview)</h3><pre>{safe(self._truncate(tech,700))}</pre></div>" if tech else ""
-        team_block = f"<div class='card'><h3>Team Qualifications (preview)</h3><pre>{safe(self._truncate(team,700))}</pre></div>" if team else ""
-        past_block = f"<div class='card'><h3>Past Performance (preview)</h3><pre>{safe(self._truncate(past,700))}</pre></div>" if past else ""
-        cta = f"<div class='cta'><a class='btn' href='{view_url}' target='_blank' rel='noopener'>View Opportunity Online</a></div>" if view_url else ""
+        cover = read_section("cover_letter.txt")
+        exec_sum = read_section("executive_summary.txt")
+        tech = read_section("technical_approach.txt")
+        team = read_section("team_qualifications.txt")
+        past = read_section("past_performance.txt")
+
+        def block(title: str, content: str) -> str:
+            if not content.strip():
+                return ""
+            return f"<div class='card'><h3>{safe(title)}</h3><pre>{safe(content)}</pre></div>"
+
+        cover_block = block("Cover Letter", cover)
+        exec_block = block("Executive Summary", exec_sum)
+        tech_block = block("Technical Approach", tech)
+        team_block = block("Team Qualifications", team)
+        past_block = block("Past Performance", past)
+
+        cta = ""
+        try:
+            url = meta.get("opportunity_url")
+            if url:
+                parsed = urlparse(url)
+                # Only include simple CTAs for http/https
+                if parsed.scheme in {"http", "https"}:
+                    cta = f"<div class='cta'><a href='{url}' target='_blank' rel='noopener noreferrer'>View Opportunity</a></div>"
+        except Exception:
+            pass
+
+        plain_text = (
+            f"Application Package for: {title}\n"
+            + (f"Agency: {agency}\n" if agency else "")
+            + (f"ID: {opp_id}\n" if opp_id else "")
+            + "\nAttached Documents:\n"
+            + "\n".join(f" - {p.name}" for p in attachments)
+        )
 
         html = f"""
-        <!doctype html>
         <html>
           <head>
             <meta charset='utf-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1'>
-            {styles}
+            <style>
+              body {{ font-family: Arial, sans-serif; color: #222; }}
+              .container {{ max-width: 800px; margin: auto; padding: 24px; }}
+              .header h1 {{ margin: 0 0 4px 0; }}
+              .subtle {{ color: #666; font-size: 14px; }}
+              .meta {{ margin: 12px 0; }}
+              .chip {{ display: inline-block; padding: 4px 8px; background: #eef; border-radius: 12px; margin-right: 6px; font-size: 12px; }}
+              .content {{ margin-top: 16px; }}
+              .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; }}
+              .cta a {{ display: inline-block; padding: 8px 12px; background: #1976d2; color: #fff; text-decoration: none; border-radius: 6px; }}
+              pre {{ white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace, Menlo, Consolas, monospace; }}
+            </style>
           </head>
           <body>
             <div class='container'>
@@ -270,42 +290,64 @@ class EmailSender:
     def send_application_package(self, opportunity_id: str, opportunity_title: str, opportunity_agency: str,
                                  extra_doc_keywords: Optional[List[str]] = None,
                                  extra_doc_names: Optional[List[str]] = None,
-                                 to: Optional[List[str]] = None) -> Dict[str, Any]:
+                                 to: Optional[List[str]] = None,
+                                 selected_only: bool = False) -> Dict[str, Any]:
         """Send the generated application package and extra documents via email."""
         app_folder = self.find_latest_application_folder(opportunity_id)
         if not app_folder:
             return {"status": "error", "message": "Application folder not found for the given opportunity."}
 
         attachments: List[Path] = []
-        complete_app = app_folder / "complete_application.txt"
-        if complete_app.exists():
-            attachments.append(complete_app)
-        # Optionally include section files
-        for section in [
-            "cover_letter.txt",
-            "technical_approach.txt",
-            "past_performance.txt",
-            "team_qualifications.txt",
-            "executive_summary.txt",
-        ]:
-            sec_path = app_folder / section
-            if sec_path.exists():
-                attachments.append(sec_path)
 
-        # Include requested extra docs by keywords
-        keywords = extra_doc_keywords or []
-        if keywords:
-            attachments.extend(self.find_documents_by_keywords(keywords))
+        if selected_only:
+            # Only attach the explicitly selected names, searching both the application folder and documents folder
+            names = extra_doc_names or []
+            # From the application folder
+            for name in names:
+                try:
+                    p = (app_folder / name)
+                    if p.exists() and p.is_file():
+                        attachments.append(p)
+                except Exception:
+                    continue
+            # From the documents folder
+            if names:
+                attachments.extend(self.find_documents_by_names(names))
+        else:
+            # Default behavior: include the complete application and section files
+            complete_app = app_folder / "complete_application.txt"
+            if complete_app.exists():
+                attachments.append(complete_app)
+            # Optionally include section files
+            for section in [
+                "cover_letter.txt",
+                "technical_approach.txt",
+                "past_performance.txt",
+                "team_qualifications.txt",
+                "executive_summary.txt",
+            ]:
+                sec_path = app_folder / section
+                if sec_path.exists():
+                    attachments.append(sec_path)
 
-        # Include additional docs by explicit names
-        if extra_doc_names:
-            attachments.extend(self.find_documents_by_names(extra_doc_names))
+            # Include requested extra docs by keywords
+            keywords = extra_doc_keywords or []
+            if keywords:
+                attachments.extend(self.find_documents_by_keywords(keywords))
+
+            # Include additional docs by explicit names
+            if extra_doc_names:
+                attachments.extend(self.find_documents_by_names(extra_doc_names))
 
         # Deduplicate attachments
         dedup: List[Path] = []
         seen_paths = set()
         for p in attachments:
-            rp = p.resolve()
+            try:
+                rp = p.resolve()
+            except Exception:
+                # Fallback to string path if resolution fails
+                rp = Path(str(p))
             if rp not in seen_paths:
                 dedup.append(p)
                 seen_paths.add(rp)
